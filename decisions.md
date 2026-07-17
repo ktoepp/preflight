@@ -44,5 +44,8 @@ Wix/Squarespace/Framer all generate sitemap.xml themselves; emitting one would s
 ## 2026-07-17 — Findings carry structured evidence, rendered as native <details> (v0.5)
 Every finding may include `evidence: [{selector, snippet, note}]` and `helpUrl`. a11y went from impact-grouped counts to one finding per axe rule so each rule's elements and fix guidance stay together (this also replaced the special-cased alt-text finding — alt rules now surface as their own per-rule findings). Reports render evidence in `<details>` disclosures — native HTML, no JS, keeps reports self-contained and email-safe. Evidence is capped (10 elements per rule, 5 anchors per link, 3 elements per placeholder pattern) to keep report size sane on messy pages.
 
+## 2026-07-17 — Sitemap discovery: robots.txt directives beat conventional paths; absence is a finding (v0.7)
+Discovery order: `Sitemap:` lines in robots.txt (how real crawlers discover sitemaps; catches nonstandard locations), then /sitemap.xml, /sitemap_index.xml (Yoast), /wp-sitemap.xml (WP core), /sitemap-index.xml — first hit wins, memoized per origin so crawl/map/SEO-check share one pass. No sitemap → warn-level SEO finding, because it degrades both search-engine coverage and our own crawl (orphan pages become undiscoverable — only `crawl --urls` can reach them). Deliberately no search-engine or Wayback scraping to find orphans.
+
 ## 2026-07-17 — Scope patterns match pathnames; bare paths are prefixes; start URL always in scope
 `/work` matches `/work` and `/work/x` (segment-boundary prefix); `*` stays within a segment, `**` crosses segments. The start URL bypasses scope so a crawl can't exclude its own entry point into nothing.

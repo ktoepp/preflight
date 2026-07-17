@@ -8,53 +8,12 @@ import { chromium } from 'playwright';
 import { auditPage, ENGINES } from './audit.js';
 import { USER_AGENT, inScope } from './util.js';
 import { fetchRobots } from './robots.js';
+import { discoverSitemap } from './sitemap.js';
 
 const SITEMAP_TIMEOUT_MS = 10000;
-const MAX_CHILD_SITEMAPS = 10;
 
-// File extensions that are never HTML pages worth auditing.
-const NON_PAGE_RE =
-  /\.(png|jpe?g|gif|svg|webp|avif|ico|css|js|mjs|json|xml|txt|pdf|zip|gz|mp4|webm|mov|mp3|wav|woff2?|ttf|otf|eot)$/i;
-
-// Canonical form for visited-set membership: drop hash, drop default ports,
-// collapse trailing slash (except root).
-export function normalizePageUrl(input, base) {
-  const u = new URL(input, base);
-  u.hash = '';
-  if (u.pathname.length > 1 && u.pathname.endsWith('/')) {
-    u.pathname = u.pathname.slice(0, -1);
-  }
-  return u.href;
-}
-
-export function isAuditablePage(url, origin) {
-  let u;
-  try {
-    u = new URL(url);
-  } catch {
-    return false;
-  }
-  if (u.origin !== origin) return false;
-  if (NON_PAGE_RE.test(u.pathname)) return false;
-  return true;
-}
-
-async function fetchText(url) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), SITEMAP_TIMEOUT_MS);
-  try {
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: { 'User-Agent': USER_AGENT },
-    });
-    if (!res.ok) return null;
-    return await res.text();
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
-}
+export { normalizePageUrl, isAuditablePage } from './util.js';
+import { normalizePageUrl, isAuditablePage } from './util.js';
 
 // Follow redirects on the start URL so the crawl origin matches the site's
 // canonical host. Falls back to the given URL on any error (Playwright will
@@ -75,42 +34,6 @@ export async function resolveStart(url) {
   } finally {
     clearTimeout(timer);
   }
-}
-
-const locsOf = (xml) =>
-  [...xml.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/gi)].map((m) => m[1]);
-
-/**
- * Fetch and parse sitemap.xml (following a sitemap index one level deep).
- * Returns { urls, found } where urls are same-origin page URLs.
- */
-export async function fetchSitemapUrls(origin) {
-  const xml = await fetchText(`${origin}/sitemap.xml`);
-  if (!xml) return { urls: [], found: false };
-
-  let pageLocs;
-  if (/<sitemapindex/i.test(xml)) {
-    const children = locsOf(xml).slice(0, MAX_CHILD_SITEMAPS);
-    const nested = await Promise.all(children.map(fetchText));
-    pageLocs = nested.filter(Boolean).flatMap(locsOf);
-  } else {
-    pageLocs = locsOf(xml);
-  }
-
-  const urls = [];
-  const seen = new Set();
-  for (const loc of pageLocs) {
-    let norm;
-    try {
-      norm = normalizePageUrl(loc);
-    } catch {
-      continue;
-    }
-    if (!isAuditablePage(norm, origin) || seen.has(norm)) continue;
-    seen.add(norm);
-    urls.push(norm);
-  }
-  return { urls, found: true };
 }
 
 // Short filesystem slug for a page path: '/' → 'home', '/about/team' → 'about-team'.
@@ -185,11 +108,11 @@ export async function crawlSite(startUrl, opts = {}) {
     return false;
   };
 
-  let sitemap = { found: false, urls: [] };
+  let sitemap = { found: false, urls: [], source: null };
   if (!listMode) {
     onEvent({ type: 'sitemap' });
-    sitemap = await fetchSitemapUrls(origin);
-    onEvent({ type: 'sitemap-done', found: sitemap.found, count: sitemap.urls.length });
+    sitemap = await discoverSitemap(origin);
+    onEvent({ type: 'sitemap-done', found: sitemap.found, count: sitemap.urls.length, source: sitemap.source });
   }
 
   // The start URL is always audited, even outside the scope patterns.
@@ -292,6 +215,7 @@ export async function crawlSite(startUrl, opts = {}) {
     robotsFound: robots ? robots.found : null,
     robotsBlocked,
     sitemapFound: sitemap.found,
+    sitemapSource: sitemap.source,
     sitemapCount: sitemap.urls.length,
     pages,
     // Discovered but over the page limit (redirect-dedupe can leave visited

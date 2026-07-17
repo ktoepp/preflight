@@ -12,6 +12,7 @@ const MAX_CRAWL_DELAY_S = 10;
 
 export function parseRobots(text) {
   const groups = [];
+  const sitemaps = [];
   let current = null;
   let lastWasUA = false;
 
@@ -39,9 +40,11 @@ export function parseRobots(text) {
     } else if (directive === 'crawl-delay') {
       const n = parseFloat(value);
       if (Number.isFinite(n) && n > 0) current.crawlDelay = Math.min(n, MAX_CRAWL_DELAY_S);
+    } else if (directive === 'sitemap' && value) {
+      sitemaps.push(value); // global directive, not group-scoped
     }
   }
-  return groups;
+  return { groups, sitemaps };
 }
 
 // Pick the most specific matching group: our own token beats *.
@@ -61,6 +64,9 @@ function ruleToRegex(path) {
   return new RegExp(`^${esc}${anchored ? '$' : ''}`);
 }
 
+// One fetch per origin per process — crawl rules and sitemap discovery share it.
+const robotsCache = new Map();
+
 /**
  * Fetch and compile robots.txt for an origin.
  * Returns { found, isAllowed(url), crawlDelay, disallowsEverything }.
@@ -68,7 +74,12 @@ function ruleToRegex(path) {
  * the conventional fail-open behavior for 404; we accept it for 5xx too
  * rather than dead-ending an owner's audit.
  */
-export async function fetchRobots(origin) {
+export function fetchRobots(origin) {
+  if (!robotsCache.has(origin)) robotsCache.set(origin, fetchRobotsUncached(origin));
+  return robotsCache.get(origin);
+}
+
+async function fetchRobotsUncached(origin) {
   let text = null;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -85,12 +96,13 @@ export async function fetchRobots(origin) {
   }
 
   if (text == null) {
-    return { found: false, isAllowed: () => true, crawlDelay: null, disallowsEverything: false };
+    return { found: false, isAllowed: () => true, crawlDelay: null, disallowsEverything: false, sitemaps: [] };
   }
 
-  const group = selectGroup(parseRobots(text));
+  const { groups, sitemaps } = parseRobots(text);
+  const group = selectGroup(groups);
   if (!group) {
-    return { found: true, isAllowed: () => true, crawlDelay: null, disallowsEverything: false };
+    return { found: true, isAllowed: () => true, crawlDelay: null, disallowsEverything: false, sitemaps };
   }
 
   const rules = group.rules
@@ -120,5 +132,6 @@ export async function fetchRobots(origin) {
     isAllowed,
     crawlDelay: group.crawlDelay,
     disallowsEverything: !isAllowed(`${origin}/`),
+    sitemaps,
   };
 }

@@ -1,12 +1,13 @@
 // SEO basics — title, meta description, headings, canonical, robots, social tags.
 import { statusFromFindings } from '../util.js';
+import { discoverSitemap } from '../sitemap.js';
 
 const TITLE_MIN = 30;
 const TITLE_MAX = 60;
 const DESC_MIN = 50;
 const DESC_MAX = 160;
 
-export async function run({ page }) {
+export async function run({ page, url }) {
   const findings = [];
 
   // Gather everything we need in one DOM pass.
@@ -90,6 +91,23 @@ export async function run({ page }) {
       message: `robots meta contains "noindex" — page is blocked from search engines.`,
       detail: data.robots,
     });
+  }
+
+  // Sitemap presence (site-level; discovery is memoized per origin, so a
+  // crawl pays for this once). Without one, search engines — and our own
+  // crawl — are limited to link discovery, and orphan pages stay invisible.
+  try {
+    const sitemap = await discoverSitemap(new URL(url).origin);
+    if (!sitemap.found) {
+      findings.push({
+        severity: 'warn',
+        message:
+          'No sitemap found (checked robots.txt Sitemap: directives and common paths) — ' +
+          'search engines and site crawls are limited to link discovery; unlinked pages won\'t be found.',
+      });
+    }
+  } catch {
+    // origin unparsable (failed navigation) — skip silently
   }
 
   // Social / Open Graph

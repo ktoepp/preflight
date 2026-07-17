@@ -27,10 +27,12 @@ export function printCrawlProgress(ev) {
     return;
   }
   if (ev.type === 'sitemap') {
-    process.stdout.write(c.dim('Fetching sitemap.xml … '));
+    process.stdout.write(c.dim('Looking for a sitemap … '));
   } else if (ev.type === 'sitemap-done') {
     console.log(
-      ev.found ? c.dim(`found, ${ev.count} URLs`) : c.dim('not found (link discovery only)')
+      ev.found
+        ? c.dim(`found${ev.source === 'robots.txt' ? ' via robots.txt' : ev.source && ev.source !== '/sitemap.xml' ? ` at ${ev.source}` : ''}, ${ev.count} URLs`)
+        : c.dim('not found (checked robots.txt + common paths) — link discovery only')
     );
   } else if (ev.type === 'page-start') {
     const label = new URL(ev.url).pathname || '/';
@@ -57,10 +59,12 @@ export function printMapProgress(ev) {
     return;
   }
   if (ev.type === 'sitemap') {
-    process.stdout.write(c.dim('Fetching sitemap.xml … '));
+    process.stdout.write(c.dim('Looking for a sitemap … '));
   } else if (ev.type === 'sitemap-done') {
     console.log(
-      ev.found ? c.dim(`found, ${ev.count} URLs`) : c.dim('not found (link discovery only)')
+      ev.found
+        ? c.dim(`found${ev.source === 'robots.txt' ? ' via robots.txt' : ev.source && ev.source !== '/sitemap.xml' ? ` at ${ev.source}` : ''}, ${ev.count} URLs`)
+        : c.dim('not found (checked robots.txt + common paths) — link discovery only')
     );
   } else if (ev.type === 'page-done') {
     const p = ev.page;

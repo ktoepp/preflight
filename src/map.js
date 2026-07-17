@@ -6,13 +6,9 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { chromium } from 'playwright';
 
-import {
-  normalizePageUrl,
-  isAuditablePage,
-  fetchSitemapUrls,
-  resolveStart,
-} from './crawl.js';
-import { USER_AGENT, inScope } from './util.js';
+import { resolveStart } from './crawl.js';
+import { discoverSitemap } from './sitemap.js';
+import { USER_AGENT, inScope, normalizePageUrl, isAuditablePage } from './util.js';
 import { fetchRobots } from './robots.js';
 
 const DEFAULT_VIEWPORT = { width: 1440, height: 900 };
@@ -63,8 +59,8 @@ export async function mapSite(startUrl, opts = {}) {
   };
 
   onEvent({ type: 'sitemap' });
-  const sitemap = await fetchSitemapUrls(origin);
-  onEvent({ type: 'sitemap-done', found: sitemap.found, count: sitemap.urls.length });
+  const sitemap = await discoverSitemap(origin);
+  onEvent({ type: 'sitemap-done', found: sitemap.found, count: sitemap.urls.length, source: sitemap.source });
   const sitemapSet = new Set(sitemap.urls);
 
   let outOfScope = 0;
@@ -176,6 +172,7 @@ export async function mapSite(startUrl, opts = {}) {
     robotsFound: robots ? robots.found : null,
     robotsBlocked,
     sitemapFound: sitemap.found,
+    sitemapSource: sitemap.source,
     sitemapCount: sitemap.urls.length,
     pages,
     orphans,

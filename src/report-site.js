@@ -98,8 +98,8 @@ export async function writeSiteReport(crawl, outDir) {
     crawl.mode === 'list'
       ? 'audited from a curated URL list'
       : crawl.sitemapFound
-        ? `sitemap.xml found (${crawl.sitemapCount} URLs)`
-        : 'no sitemap.xml — crawled from links only';
+        ? `sitemap found${crawl.sitemapSource === 'robots.txt' ? ' via robots.txt' : ''} (${crawl.sitemapCount} URLs)`
+        : 'no sitemap found — crawled from links only';
   const robotsNote = crawl.robotsBlocked
     ? ` · ${crawl.robotsBlocked} URL${crawl.robotsBlocked === 1 ? '' : 's'} skipped per robots.txt`
     : '';
