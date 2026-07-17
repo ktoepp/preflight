@@ -9,7 +9,7 @@ import { crawlSite } from '../src/crawl.js';
 import { writeReport } from '../src/report.js';
 import { writeSiteReport } from '../src/report-site.js';
 import { printSummary, printCrawlProgress, printSiteSummary, summarize } from '../src/terminal.js';
-import { normalizeUrl, safeHost, timestamp, c } from '../src/util.js';
+import { normalizeUrl, safeHost, timestamp, c, VERSION } from '../src/util.js';
 
 const program = new Command();
 
@@ -27,7 +27,7 @@ function parseBasicAuth(value) {
 program
   .name('preflight')
   .description('Local website QA — accessibility, links, SEO, favicon, flags, screenshots.')
-  .version('0.2.0');
+  .version(VERSION);
 
 program
   .command('check')

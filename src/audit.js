@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { chromium } from 'playwright';
 
+import { USER_AGENT } from './util.js';
 import * as a11y from './checks/a11y.js';
 import * as links from './checks/links.js';
 import * as seo from './checks/seo.js';
@@ -16,7 +17,6 @@ import * as screenshots from './checks/screenshots.js';
 const DOM_CHECKS = [a11y, seo, favicon, flags, links];
 
 const DEFAULT_VIEWPORT = { width: 1440, height: 900 };
-const USER_AGENT = 'Preflight/0.1 (+https://github.com/preflight)';
 
 /**
  * Audit a single URL.
@@ -38,62 +38,67 @@ export async function auditPage(url, opts = {}) {
 
   const ownsBrowser = !opts.browser;
   const browser = opts.browser || (await chromium.launch());
-  const context = await browser.newContext({
-    viewport: DEFAULT_VIEWPORT,
-    userAgent: USER_AGENT,
-    ignoreHTTPSErrors: true,
-    ...(httpCredentials ? { httpCredentials } : {}),
-    ...(storageState ? { storageState } : {}),
-  });
-  const page = await context.newPage();
-
-  // Collect signals during load for the flags check.
-  const consoleErrors = [];
-  const requests = [];
-  page.on('console', (msg) => {
-    if (msg.type() === 'error') consoleErrors.push(msg.text());
-  });
-  page.on('pageerror', (err) => consoleErrors.push(err.message));
-  page.on('request', (req) => requests.push(req.url()));
-
-  let response = null;
-  let navError = null;
+  let context;
   try {
-    response = await page.goto(url, { waitUntil: 'networkidle', timeout });
-  } catch (err) {
-    // networkidle can time out on sites with long-polling / analytics beacons.
-    // Fall back to domcontentloaded so the rest of the audit still runs.
-    navError = err.message;
+    context = await browser.newContext({
+      viewport: DEFAULT_VIEWPORT,
+      userAgent: USER_AGENT,
+      ignoreHTTPSErrors: true,
+      ...(httpCredentials ? { httpCredentials } : {}),
+      ...(storageState ? { storageState } : {}),
+    });
+    const page = await context.newPage();
+
+    // Collect signals during load for the flags check.
+    const consoleErrors = [];
+    const requests = [];
+    page.on('console', (msg) => {
+      if (msg.type() === 'error') consoleErrors.push(msg.text());
+    });
+    page.on('pageerror', (err) => consoleErrors.push(err.message));
+    page.on('request', (req) => requests.push(req.url()));
+
+    let response = null;
+    let navError = null;
     try {
-      response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout });
-      navError = `networkidle timed out; audited after domcontentloaded (${err.message.split('\n')[0]})`;
-    } catch (err2) {
-      navError = err2.message;
+      response = await page.goto(url, { waitUntil: 'networkidle', timeout });
+    } catch (err) {
+      // networkidle can time out on sites with long-polling / analytics beacons.
+      // Fall back to domcontentloaded so the rest of the audit still runs.
+      navError = err.message;
+      try {
+        response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout });
+        navError = `networkidle timed out; audited after domcontentloaded (${err.message.split('\n')[0]})`;
+      } catch (err2) {
+        navError = err2.message;
+      }
     }
+
+    const finalUrl = page.url();
+    const ctx = { page, url: finalUrl, response, outDir, consoleErrors, requests, linkCache };
+
+    const results = [];
+    for (const check of DOM_CHECKS) {
+      results.push(await safeRun(check, ctx));
+    }
+    // Screenshots last — it resizes the viewport.
+    results.push(await safeRun(screenshots, ctx));
+
+    return {
+      url,
+      finalUrl,
+      statusCode: response ? response.status() : null,
+      navError,
+      startedAt,
+      durationMs: Date.now() - startedAt.getTime(),
+      results,
+    };
+  } finally {
+    // Close the browser we own, or just our context on a shared (crawl)
+    // browser — even when a check or navigation throws.
+    if (ownsBrowser) await browser.close().catch(() => {});
+    else await context?.close().catch(() => {});
   }
-
-  const finalUrl = page.url();
-  const ctx = { page, url: finalUrl, response, outDir, consoleErrors, requests, linkCache };
-
-  const results = [];
-  for (const check of DOM_CHECKS) {
-    results.push(await safeRun(check, ctx));
-  }
-  // Screenshots last — it resizes the viewport.
-  results.push(await safeRun(screenshots, ctx));
-
-  if (ownsBrowser) await browser.close();
-  else await context.close();
-
-  return {
-    url,
-    finalUrl,
-    statusCode: response ? response.status() : null,
-    navError,
-    startedAt,
-    durationMs: Date.now() - startedAt.getTime(),
-    results,
-  };
 }
 
 // Never let one failing check abort the whole audit.

@@ -6,8 +6,8 @@ import path from 'node:path';
 import { chromium } from 'playwright';
 
 import { auditPage } from './audit.js';
+import { USER_AGENT } from './util.js';
 
-const USER_AGENT = 'Preflight/0.2 (+https://github.com/preflight)';
 const SITEMAP_TIMEOUT_MS = 10000;
 const MAX_CHILD_SITEMAPS = 10;
 
@@ -193,6 +193,14 @@ export async function crawlSite(startUrl, opts = {}) {
       pages.push({ ...audit, slug, dir: pageDir });
       onEvent({ type: 'page-done', audit, slug });
 
+      // Mark the redirect target visited too, so /old-page → / doesn't get
+      // the same page audited twice under two slugs.
+      try {
+        visited.add(normalizePageUrl(audit.finalUrl));
+      } catch {
+        // about:blank etc. on failed navigations — nothing to dedupe
+      }
+
       // Discover new same-origin pages from this page's link check.
       const linkResult = audit.results.find((r) => r.id === 'links');
       for (const l of linkResult?.internal || []) {
@@ -219,7 +227,9 @@ export async function crawlSite(startUrl, opts = {}) {
     sitemapFound: sitemap.found,
     sitemapCount: sitemap.urls.length,
     pages,
-    skipped: queue.length, // discovered but over the page limit
+    // Discovered but over the page limit (redirect-dedupe can leave visited
+    // URLs in the queue — don't count those).
+    skipped: queue.filter((u) => !visited.has(u)).length,
     startedAt,
     durationMs: Date.now() - startedAt.getTime(),
   };

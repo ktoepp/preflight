@@ -41,9 +41,11 @@ export async function run({ page }) {
     });
   }
 
-  // Group the remaining violations by impact.
+  // Group the remaining violations by impact (alt-text rules already
+  // reported above — don't count them twice).
   const byImpact = {};
   for (const v of violations) {
+    if (altRules.includes(v.id)) continue;
     const impact = v.impact || 'minor';
     (byImpact[impact] ||= []).push(v);
   }

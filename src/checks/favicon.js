@@ -1,8 +1,7 @@
 // Favicon check — locates the icon, verifies it loads, hashes its bytes.
-import { sha256, statusFromFindings } from '../util.js';
+import { sha256, statusFromFindings, USER_AGENT } from '../util.js';
 
 const REQUEST_TIMEOUT_MS = 12000;
-const USER_AGENT = 'Preflight/0.1 (+https://github.com/preflight)';
 
 // TODO(v0.2): populate with sha256 hashes of known platform-default favicons
 // (Wix, Squarespace, Framer, WordPress template placeholders) so we can flag

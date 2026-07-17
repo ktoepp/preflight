@@ -1,12 +1,11 @@
 // Link check — validates every <a href> found in the rendered DOM.
 import PQueue from 'p-queue';
-import { statusFromFindings } from '../util.js';
+import { statusFromFindings, USER_AGENT } from '../util.js';
 
 const CONCURRENCY = 5;
 const REQUEST_TIMEOUT_MS = 12000;
 const MAX_REDIRECTS = 5;
 const REDIRECT_CHAIN_WARN = 2; // report chains longer than this
-const USER_AGENT = 'Preflight/0.1 (+https://github.com/preflight)';
 
 // Follow redirects manually so we can count the chain length.
 async function probe(url, method) {
@@ -110,20 +109,26 @@ export async function run({ page, url, linkCache }) {
     )
   );
 
-  const broken = results.filter((r) => r.status && r.status >= 400);
+  const isBotBlocked = (r) => !r.internal && [999, 403, 429].includes(r.status);
+  const allBad = results.filter((r) => r.status && r.status >= 400);
+  const broken = allBad.filter((r) => !isBotBlocked(r));
+  const botBlocked = allBad.filter(isBotBlocked);
   const errored = results.filter((r) => r.status == null);
   const longChains = results.filter((r) => r.chain && r.chain.length > REDIRECT_CHAIN_WARN);
   const okCount = results.filter((r) => r.status && r.status < 400).length;
 
   for (const r of broken) {
-    // LinkedIn (999) and some CDNs (403/429) block automated checkers while
-    // serving real browsers fine — report those as warnings, not failures.
-    const botBlocked = !r.internal && [999, 403, 429].includes(r.status);
     findings.push({
-      severity: botBlocked ? 'warn' : r.status >= 500 || r.internal ? 'fail' : 'warn',
-      message: botBlocked
-        ? `${r.status} external — ${r.url} (likely bot protection; verify manually in a browser)`
-        : `${r.status} ${r.internal ? 'internal' : 'external'} — ${r.url}`,
+      severity: r.status >= 500 || r.internal ? 'fail' : 'warn',
+      message: `${r.status} ${r.internal ? 'internal' : 'external'} — ${r.url}`,
+    });
+  }
+  // LinkedIn (999) and some CDNs (403/429) block automated checkers while
+  // serving real browsers fine — report those as warnings, not failures.
+  for (const r of botBlocked) {
+    findings.push({
+      severity: 'warn',
+      message: `${r.status} external — ${r.url} (likely bot protection; verify manually in a browser)`,
     });
   }
   for (const r of errored) {
@@ -149,7 +154,9 @@ export async function run({ page, url, linkCache }) {
   } else {
     findings.unshift({
       severity: 'info',
-      message: `Checked ${results.length} links — ${okCount} ok, ${broken.length} broken, ${errored.length} unreachable, ${longChains.length} long redirect chains.`,
+      message:
+        `Checked ${results.length} links — ${okCount} ok, ${broken.length} broken, ` +
+        `${botBlocked.length} bot-blocked, ${errored.length} unreachable, ${longChains.length} long redirect chains.`,
     });
   }
 

@@ -1,6 +1,6 @@
 {
   "name": "preflight",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A lightweight, local-first QA tool for web designers — accessibility, links, SEO, favicon, release flags, and responsive screenshots in one report.",
   "type": "module",
   "bin": {

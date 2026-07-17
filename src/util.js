@@ -1,6 +1,10 @@
 // Small shared helpers — no external deps.
 import crypto from 'node:crypto';
 
+// Single place to bump the version string used in UA headers and reports.
+export const VERSION = '0.3.0';
+export const USER_AGENT = `Preflight/${VERSION} (+https://github.com/preflight)`;
+
 // --- Terminal colors (minimal ANSI, respects NO_COLOR) ---
 const useColor = process.stdout.isTTY && !process.env.NO_COLOR;
 const wrap = (code) => (s) => (useColor ? `\x1b[${code}m${s}\x1b[0m` : String(s));
