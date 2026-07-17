@@ -1,0 +1,32 @@
+{
+  "name": "preflight",
+  "version": "0.1.0",
+  "description": "A lightweight, local-first QA tool for web designers — accessibility, links, SEO, favicon, release flags, and responsive screenshots in one report.",
+  "type": "module",
+  "bin": {
+    "preflight": "bin/preflight.js"
+  },
+  "scripts": {
+    "check": "node bin/preflight.js check",
+    "postinstall": "node -e \"console.log('Run: npx playwright install chromium')\""
+  },
+  "keywords": [
+    "qa",
+    "accessibility",
+    "a11y",
+    "seo",
+    "playwright",
+    "web-design",
+    "audit"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@axe-core/playwright": "^4.10.1",
+    "commander": "^13.0.0",
+    "p-queue": "^8.0.1",
+    "playwright": "^1.49.0"
+  }
+}
