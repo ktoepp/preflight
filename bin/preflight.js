@@ -130,6 +130,7 @@ program
   .option('--timeout <ms>', 'per-page navigation timeout in milliseconds', (v) => parseInt(v, 10), 15000)
   .option('--include <patterns>', 'only follow paths matching (repeatable, comma-separable, globs ok)', collectList)
   .option('--exclude <patterns>', 'skip paths matching (repeatable, comma-separable, globs ok)', collectList)
+  .option('--ignore-robots', 'audit pages even if robots.txt disallows crawling (only on sites you own)')
   .option('--basic-auth <user:pass>', 'HTTP basic auth credentials')
   .option('--storage-state <path>', 'Playwright storage-state JSON (saved login)')
   .action(async (rawUrl, opts) => {
@@ -143,6 +144,7 @@ program
         maxPages: opts.maxPages,
         timeout: opts.timeout,
         scope: compileScope(opts.include, opts.exclude),
+        ignoreRobots: opts.ignoreRobots,
         httpCredentials: parseBasicAuth(opts.basicAuth),
         storageState: opts.storageState,
         onEvent: printMapProgress,
@@ -168,6 +170,7 @@ program
   .option('--include <patterns>', 'only audit paths matching (repeatable, comma-separable, globs ok)', collectList)
   .option('--exclude <patterns>', 'skip paths matching (repeatable, comma-separable, globs ok)', collectList)
   .option('--urls <file>', 'audit exactly the URLs in this file (from `preflight map`); skips discovery')
+  .option('--ignore-robots', 'audit pages even if robots.txt disallows crawling (only on sites you own)')
   .option('--basic-auth <user:pass>', 'HTTP basic auth credentials')
   .option('--storage-state <path>', 'Playwright storage-state JSON (saved login)')
   .action(async (rawUrl, opts, cmd) => {
@@ -199,6 +202,7 @@ program
         engines: parseBrowsers(opts.browsers),
         scope: compileScope(opts.include, opts.exclude),
         urlList,
+        ignoreRobots: opts.ignoreRobots,
         onEvent: printCrawlProgress,
       });
     } catch (err) {

@@ -26,8 +26,11 @@ Sitemap gives the site's own inventory (and catches orphan pages); rendered-DOM 
 ## 2026-07-17 — One shared browser + cross-page link cache per crawl
 Header/footer links repeat on every page; probing them once per crawl (Map of url → probe promise) cuts crawl time and is politer to the target. Each page still gets a fresh browser context so state doesn't leak between pages.
 
-## 2026-07-17 — Skip robots.txt handling until the tool is shared
+## 2026-07-17 — Skip robots.txt handling until the tool is shared *(superseded — shipped in v0.6 once the repo went public)*
 PLAN.md calls for robots.txt respect with an owner override. Deferred: current users audit their own sites, where the owner override would always be on. Becomes required before npm publish.
+
+## 2026-07-17 — robots.txt: obey in crawl/map, exempt check, fail open on fetch errors (v0.6)
+Own ~60-line parser (Google semantics: group by UA token, longest-path-match wins, Allow wins ties, `*`/`$` wildcards, Crawl-delay capped at 10s) instead of a dependency — the spec subset we need is small and testable. `check` ignores robots.txt: auditing one explicitly typed URL is a user action like opening a browser, not crawling. A disallowed *start* URL fails the crawl fast with a "--ignore-robots if you own it" hint rather than silently auditing nothing. Missing/unreachable/5xx robots.txt fails open (conventional for 404; accepted for 5xx too so an owner's audit isn't dead-ended by a flaky server).
 
 ## 2026-07-17 — Per-page audits run only in Chromium; extra engines capture screenshots only (v0.3)
 axe-core results, SEO tags, favicon, and link statuses don't meaningfully differ per engine — re-running all checks in Firefox/WebKit would triple crawl time for near-identical findings. Cross-browser value is rendering, so extra engines only navigate and screenshot the viewport matrix.

@@ -18,6 +18,14 @@ export function summarize(results) {
 
 // One line per page during a crawl: "  [3/25] ✓ /about — clean (4.1s)"
 export function printCrawlProgress(ev) {
+  if (ev.type === 'robots') {
+    if (ev.found) {
+      console.log(
+        c.dim(`robots.txt found${ev.crawlDelay ? ` (crawl-delay ${ev.crawlDelay}s)` : ''} — disallowed paths will be skipped`)
+      );
+    }
+    return;
+  }
   if (ev.type === 'sitemap') {
     process.stdout.write(c.dim('Fetching sitemap.xml … '));
   } else if (ev.type === 'sitemap-done') {
@@ -40,6 +48,14 @@ export function printCrawlProgress(ev) {
 
 // Map progress: one dim line per visited page.
 export function printMapProgress(ev) {
+  if (ev.type === 'robots') {
+    if (ev.found) {
+      console.log(
+        c.dim(`robots.txt found${ev.crawlDelay ? ` (crawl-delay ${ev.crawlDelay}s)` : ''} — disallowed paths will be skipped`)
+      );
+    }
+    return;
+  }
   if (ev.type === 'sitemap') {
     process.stdout.write(c.dim('Fetching sitemap.xml … '));
   } else if (ev.type === 'sitemap-done') {
@@ -64,6 +80,7 @@ export function printMapSummary(map, urlsPath) {
     `${(map.durationMs / 1000).toFixed(0)}s`,
   ];
   if (map.outOfScope) bits.push(`${map.outOfScope} URLs outside scope`);
+  if (map.robotsBlocked) bits.push(`${map.robotsBlocked} disallowed by robots.txt`);
   if (map.skipped) bits.push(`${map.skipped} beyond --max-pages`);
   console.log(c.gray(`  ${bits.join(' · ')}`));
 
@@ -105,6 +122,9 @@ export function printSiteSummary(crawl, reportPath) {
   console.log(c.bold(`Preflight — ${crawl.origin} (${crawl.pages.length} pages)`));
   if (crawl.skipped) {
     console.log(c.gray(`  ${crawl.skipped} more page(s) discovered beyond the limit — raise --max-pages to include them.`));
+  }
+  if (crawl.robotsBlocked) {
+    console.log(c.gray(`  ${crawl.robotsBlocked} URL(s) skipped per robots.txt (--ignore-robots to override on your own site).`));
   }
   const banner = [
     c.green(`${pass} pages pass`),

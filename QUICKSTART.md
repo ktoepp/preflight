@@ -96,5 +96,16 @@ node bin/preflight.js crawl staging.example.com --storage-state state.json
 | `--browsers <list>` | check, crawl | chromium | extra screenshot engines |
 | `--include` / `--exclude` | map, crawl | — | path-pattern scoping |
 | `--urls <file>` | crawl | — | audit exactly this list; skips discovery |
+| `--ignore-robots` | map, crawl | — | override robots.txt on sites you own |
 
 Exit code is non-zero when any check fails, so `check`/`crawl` slot straight into CI or a pre-release script.
+
+## Crawl etiquette
+
+`map` and `crawl` respect the site's `robots.txt` (Disallow/Allow rules and Crawl-delay) and identify themselves with a `Preflight/x.y` user-agent. Disallowed pages are skipped and counted in the summary. If the site disallows crawling entirely — common on staging — and it's **your** site, override with:
+
+```sh
+node bin/preflight.js crawl staging.example.com --ignore-robots
+```
+
+`check` audits its single URL regardless of robots.txt — one explicitly requested page is a user action, not crawling.

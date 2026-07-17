@@ -1,6 +1,6 @@
 {
   "name": "preflight",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "A lightweight, local-first QA tool for web designers \u2014 accessibility, links, SEO, favicon, release flags, and responsive screenshots in one report.",
   "author": "Katie Toepp",
   "license": "MIT",

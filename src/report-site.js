@@ -100,6 +100,9 @@ export async function writeSiteReport(crawl, outDir) {
       : crawl.sitemapFound
         ? `sitemap.xml found (${crawl.sitemapCount} URLs)`
         : 'no sitemap.xml — crawled from links only';
+  const robotsNote = crawl.robotsBlocked
+    ? ` · ${crawl.robotsBlocked} URL${crawl.robotsBlocked === 1 ? '' : 's'} skipped per robots.txt`
+    : '';
   const skippedNote = crawl.skipped
     ? ` · ${crawl.skipped} discovered page${crawl.skipped === 1 ? '' : 's'} beyond the limit not audited`
     : '';
@@ -183,7 +186,7 @@ export async function writeSiteReport(crawl, outDir) {
       <h1>${esc(crawl.origin)}</h1>
       <div class="meta">
         ${crawl.pages.length} pages audited · ${(crawl.durationMs / 1000).toFixed(0)}s ·
-        ${esc(sitemapNote)}${esc(skippedNote)} · generated ${esc(generated)}
+        ${esc(sitemapNote)}${esc(robotsNote)}${esc(skippedNote)} · generated ${esc(generated)}
       </div>
     </header>
 

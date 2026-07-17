@@ -7,6 +7,7 @@ import { chromium } from 'playwright';
 
 import { auditPage, ENGINES } from './audit.js';
 import { USER_AGENT, inScope } from './util.js';
+import { fetchRobots } from './robots.js';
 
 const SITEMAP_TIMEOUT_MS = 10000;
 const MAX_CHILD_SITEMAPS = 10;
@@ -143,6 +144,7 @@ export function pageSlug(url, taken) {
  * @param {string[]} [opts.engines]  browser engines for the screenshot matrix
  * @param {object} [opts.scope]      compiled include/exclude scope (compileScope)
  * @param {string[]} [opts.urlList]  audit exactly these URLs (skips discovery)
+ * @param {boolean} [opts.ignoreRobots] skip robots.txt checks (owner override)
  * @param {(ev: object) => void} [opts.onEvent]  progress callback
  * @returns {Promise<{startUrl, origin, sitemapFound, pages, skipped, startedAt, durationMs}>}
  */
@@ -166,6 +168,23 @@ export async function crawlSite(startUrl, opts = {}) {
   const start = normalizePageUrl(await resolveStart(normalizePageUrl(startUrl)));
   const origin = new URL(start).origin;
 
+  // Respect robots.txt unless the owner explicitly overrides.
+  const robots = opts.ignoreRobots ? null : await fetchRobots(origin);
+  if (robots) {
+    onEvent({ type: 'robots', found: robots.found, crawlDelay: robots.crawlDelay });
+    if (robots.found && !robots.isAllowed(start)) {
+      throw new Error(
+        'robots.txt disallows crawling this site. If you own it, re-run with --ignore-robots.'
+      );
+    }
+  }
+  let robotsBlocked = 0;
+  const robotsAllows = (url) => {
+    if (!robots || robots.isAllowed(url)) return true;
+    robotsBlocked++;
+    return false;
+  };
+
   let sitemap = { found: false, urls: [] };
   if (!listMode) {
     onEvent({ type: 'sitemap' });
@@ -178,9 +197,10 @@ export async function crawlSite(startUrl, opts = {}) {
 
   // BFS queue: start URL first, then sitemap pages, then discovered links —
   // or, in list mode, exactly the curated list.
-  const queue = listMode
+  const queue = (listMode
     ? [...new Set(opts.urlList.map((u) => normalizePageUrl(u)))].filter(admit)
-    : [start, ...sitemap.urls.filter((u) => u !== start && admit(u))];
+    : [start, ...sitemap.urls.filter((u) => u !== start && admit(u))]
+  ).filter((u) => u === start || robotsAllows(u));
   const enqueued = new Set(queue);
   const visited = new Set();
   const slugs = new Set();
@@ -227,6 +247,11 @@ export async function crawlSite(startUrl, opts = {}) {
       pages.push({ ...audit, slug, dir: pageDir });
       onEvent({ type: 'page-done', audit, slug });
 
+      // Honor Crawl-delay between page visits (capped in robots.js).
+      if (robots?.crawlDelay && queue.length > 0 && pages.length < maxPages) {
+        await new Promise((r) => setTimeout(r, robots.crawlDelay * 1000));
+      }
+
       // Mark the redirect target visited too, so /old-page → / doesn't get
       // the same page audited twice under two slugs.
       try {
@@ -250,6 +275,7 @@ export async function crawlSite(startUrl, opts = {}) {
         if (!isAuditablePage(norm, origin)) continue;
         if (visited.has(norm) || enqueued.has(norm)) continue;
         if (!admit(norm)) continue;
+        if (!robotsAllows(norm)) continue;
         enqueued.add(norm);
         queue.push(norm);
       }
@@ -263,6 +289,8 @@ export async function crawlSite(startUrl, opts = {}) {
     startUrl: start,
     origin,
     mode: listMode ? 'list' : 'discover',
+    robotsFound: robots ? robots.found : null,
+    robotsBlocked,
     sitemapFound: sitemap.found,
     sitemapCount: sitemap.urls.length,
     pages,

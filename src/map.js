@@ -13,6 +13,7 @@ import {
   resolveStart,
 } from './crawl.js';
 import { USER_AGENT, inScope } from './util.js';
+import { fetchRobots } from './robots.js';
 
 const DEFAULT_VIEWPORT = { width: 1440, height: 900 };
 // Hydration settle after domcontentloaded — Framer/Wix render nav client-side.
@@ -44,6 +45,23 @@ export async function mapSite(startUrl, opts = {}) {
   const start = normalizePageUrl(await resolveStart(normalizePageUrl(startUrl)));
   const origin = new URL(start).origin;
 
+  // Respect robots.txt unless the owner explicitly overrides.
+  const robots = opts.ignoreRobots ? null : await fetchRobots(origin);
+  if (robots) {
+    onEvent({ type: 'robots', found: robots.found, crawlDelay: robots.crawlDelay });
+    if (robots.found && !robots.isAllowed(start)) {
+      throw new Error(
+        'robots.txt disallows crawling this site. If you own it, re-run with --ignore-robots.'
+      );
+    }
+  }
+  let robotsBlocked = 0;
+  const robotsAllows = (url) => {
+    if (!robots || robots.isAllowed(url)) return true;
+    robotsBlocked++;
+    return false;
+  };
+
   onEvent({ type: 'sitemap' });
   const sitemap = await fetchSitemapUrls(origin);
   onEvent({ type: 'sitemap-done', found: sitemap.found, count: sitemap.urls.length });
@@ -57,7 +75,7 @@ export async function mapSite(startUrl, opts = {}) {
     return false;
   };
 
-  const queue = [start, ...sitemap.urls.filter((u) => u !== start && admit(u))];
+  const queue = [start, ...sitemap.urls.filter((u) => u !== start && admit(u) && robotsAllows(u))];
   const enqueued = new Set(queue);
   const visited = new Set();
   const sources = new Map(sitemap.urls.map((u) => [u, 'sitemap']));
@@ -117,6 +135,7 @@ export async function mapSite(startUrl, opts = {}) {
         linkedTo.add(norm);
         if (visited.has(norm) || enqueued.has(norm)) continue;
         if (!admit(norm)) continue;
+        if (!robotsAllows(norm)) continue;
         if (!sources.has(norm)) sources.set(norm, 'link');
         enqueued.add(norm);
         queue.push(norm);
@@ -133,6 +152,11 @@ export async function mapSite(startUrl, opts = {}) {
       };
       pages.push(entry);
       onEvent({ type: 'page-done', page: entry });
+
+      // Honor Crawl-delay between visits (capped in robots.js).
+      if (robots?.crawlDelay && queue.length > 0 && pages.length < maxPages) {
+        await new Promise((r) => setTimeout(r, robots.crawlDelay * 1000));
+      }
     }
   } finally {
     await browser.close();
@@ -149,6 +173,8 @@ export async function mapSite(startUrl, opts = {}) {
   return {
     startUrl: start,
     origin,
+    robotsFound: robots ? robots.found : null,
+    robotsBlocked,
     sitemapFound: sitemap.found,
     sitemapCount: sitemap.urls.length,
     pages,
