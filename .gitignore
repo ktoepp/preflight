@@ -4,3 +4,8 @@ reports/
 *.log
 .DS_Store
 .env
+
+# Playwright storage-state files hold live session cookies — never commit.
+state.json
+*.state.json
+storage-state*.json

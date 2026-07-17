@@ -43,3 +43,7 @@ Options (both commands): `--out <dir>`, `--timeout <ms>`, `--browsers firefox,we
 2. Run 100% locally — no SaaS account, no uploading client sites anywhere
 3. Produce a client-ready report (shareable HTML/PDF)
 4. Eventually shareable with other creators as an installable CLI/app
+
+## License
+
+MIT © Katie Toepp
