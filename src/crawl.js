@@ -5,7 +5,7 @@
 import path from 'node:path';
 import { chromium } from 'playwright';
 
-import { auditPage } from './audit.js';
+import { auditPage, ENGINES } from './audit.js';
 import { USER_AGENT } from './util.js';
 
 const SITEMAP_TIMEOUT_MS = 10000;
@@ -140,6 +140,7 @@ export function pageSlug(url, taken) {
  * @param {number} [opts.timeout]    per-page navigation timeout
  * @param {{username,password}} [opts.httpCredentials]
  * @param {string} [opts.storageState]
+ * @param {string[]} [opts.engines]  browser engines for the screenshot matrix
  * @param {(ev: object) => void} [opts.onEvent]  progress callback
  * @returns {Promise<{startUrl, origin, sitemapFound, pages, skipped, startedAt, durationMs}>}
  */
@@ -152,6 +153,7 @@ export async function crawlSite(startUrl, opts = {}) {
     storageState,
     onEvent = () => {},
   } = opts;
+  const engines = opts.engines?.length ? opts.engines : ['chromium'];
 
   const startedAt = new Date();
   // Resolve redirects first (apex → www is near-universal on Wix/Squarespace/
@@ -172,6 +174,22 @@ export async function crawlSite(startUrl, opts = {}) {
   const pages = [];
 
   const browser = await chromium.launch();
+  // Launch one shared browser per extra engine up front — a missing engine
+  // should fail the whole crawl immediately, not warn on every page.
+  const enginePool = {};
+  for (const engine of engines.filter((e) => e !== 'chromium')) {
+    try {
+      enginePool[engine] = await ENGINES[engine].launch();
+    } catch (err) {
+      await browser.close().catch(() => {});
+      await Promise.all(Object.values(enginePool).map((b) => b.close().catch(() => {})));
+      if (/executable doesn't exist/i.test(err.message)) {
+        throw new Error(`${engine} is not installed — run: npx playwright install ${engine}`);
+      }
+      throw err;
+    }
+  }
+
   try {
     while (queue.length > 0 && pages.length < maxPages) {
       const url = queue.shift();
@@ -189,6 +207,8 @@ export async function crawlSite(startUrl, opts = {}) {
         storageState,
         browser,
         linkCache,
+        engines,
+        enginePool,
       });
       pages.push({ ...audit, slug, dir: pageDir });
       onEvent({ type: 'page-done', audit, slug });
@@ -219,6 +239,7 @@ export async function crawlSite(startUrl, opts = {}) {
     }
   } finally {
     await browser.close();
+    await Promise.all(Object.values(enginePool).map((b) => b.close().catch(() => {})));
   }
 
   return {

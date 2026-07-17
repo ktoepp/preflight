@@ -24,6 +24,22 @@ function parseBasicAuth(value) {
   return { username: value.slice(0, idx), password: value.slice(idx + 1) };
 }
 
+// Parse --browsers "firefox,webkit" → ['chromium', 'firefox', 'webkit'].
+// Chromium is always included: it runs the audit checks; extra engines only
+// capture the screenshot matrix.
+const VALID_ENGINES = ['chromium', 'firefox', 'webkit'];
+function parseBrowsers(value) {
+  if (!value) return ['chromium'];
+  const requested = value.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+  for (const b of requested) {
+    if (!VALID_ENGINES.includes(b)) {
+      console.error(c.red(`Error: unknown browser "${b}" (valid: ${VALID_ENGINES.join(', ')})`));
+      process.exit(2);
+    }
+  }
+  return [...new Set(['chromium', ...requested])];
+}
+
 program
   .name('preflight')
   .description('Local website QA — accessibility, links, SEO, favicon, flags, screenshots.')
@@ -35,6 +51,7 @@ program
   .argument('<url>', 'the page URL to audit')
   .option('--out <dir>', 'output directory for reports', 'reports')
   .option('--timeout <ms>', 'navigation timeout in milliseconds', (v) => parseInt(v, 10), 30000)
+  .option('--browsers <list>', 'extra screenshot engines, comma-separated: firefox,webkit')
   .option('--basic-auth <user:pass>', 'HTTP basic auth credentials')
   .option('--storage-state <path>', 'Playwright storage-state JSON (saved login)')
   .action(async (rawUrl, opts) => {
@@ -51,6 +68,7 @@ program
         timeout: opts.timeout,
         httpCredentials,
         storageState: opts.storageState,
+        engines: parseBrowsers(opts.browsers),
       });
     } catch (err) {
       console.error(c.red(`\nAudit failed: ${err.message}`));
@@ -72,6 +90,7 @@ program
   .option('--out <dir>', 'output directory for reports', 'reports')
   .option('--max-pages <n>', 'audit at most this many pages', (v) => parseInt(v, 10), 25)
   .option('--timeout <ms>', 'per-page navigation timeout in milliseconds', (v) => parseInt(v, 10), 30000)
+  .option('--browsers <list>', 'extra screenshot engines, comma-separated: firefox,webkit')
   .option('--basic-auth <user:pass>', 'HTTP basic auth credentials')
   .option('--storage-state <path>', 'Playwright storage-state JSON (saved login)')
   .action(async (rawUrl, opts) => {
@@ -88,6 +107,7 @@ program
         timeout: opts.timeout,
         httpCredentials,
         storageState: opts.storageState,
+        engines: parseBrowsers(opts.browsers),
         onEvent: printCrawlProgress,
       });
     } catch (err) {

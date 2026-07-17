@@ -2,7 +2,7 @@
 // `crawl` command can call auditPage() once per discovered URL.
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { chromium } from 'playwright';
+import { chromium, firefox, webkit } from 'playwright';
 
 import { USER_AGENT } from './util.js';
 import * as a11y from './checks/a11y.js';
@@ -18,6 +18,10 @@ const DOM_CHECKS = [a11y, seo, favicon, flags, links];
 
 const DEFAULT_VIEWPORT = { width: 1440, height: 900 };
 
+// Playwright engine launchers by name. Audit checks always run in chromium;
+// extra engines only capture the screenshot matrix (see decisions.md).
+export const ENGINES = { chromium, firefox, webkit };
+
 /**
  * Audit a single URL.
  * @param {string} url
@@ -28,10 +32,14 @@ const DEFAULT_VIEWPORT = { width: 1440, height: 900 };
  * @param {string} [opts.storageState] path to a Playwright storage-state file
  * @param {import('playwright').Browser} [opts.browser] shared browser (crawl); caller closes it
  * @param {Map} [opts.linkCache] shared link-probe cache (crawl)
+ * @param {string[]} [opts.engines] browser engines for the screenshot matrix (default ['chromium'])
+ * @param {Object<string, import('playwright').Browser>} [opts.enginePool] shared extra-engine browsers (crawl)
  * @returns {Promise<{url,finalUrl,statusCode,results,startedAt,durationMs,navError}>}
  */
 export async function auditPage(url, opts = {}) {
   const { outDir, timeout = 30000, httpCredentials, storageState, linkCache } = opts;
+  const engines = opts.engines?.length ? opts.engines : ['chromium'];
+  const multiEngine = engines.length > 1;
   const startedAt = new Date();
 
   await fs.mkdir(path.join(outDir, 'screenshots'), { recursive: true });
@@ -81,8 +89,32 @@ export async function auditPage(url, opts = {}) {
     for (const check of DOM_CHECKS) {
       results.push(await safeRun(check, ctx));
     }
-    // Screenshots last — it resizes the viewport.
-    results.push(await safeRun(screenshots, ctx));
+    // Screenshots last — it resizes the viewport. Tag with the engine name
+    // only on multi-engine runs so single-engine captions stay clean.
+    const shotResult = await safeRun(screenshots, {
+      ...ctx,
+      engine: multiEngine ? 'chromium' : undefined,
+    });
+
+    // Extra engines: navigate and capture the same viewport matrix, merging
+    // into the one screenshots result.
+    for (const engine of engines.filter((e) => e !== 'chromium')) {
+      const extra = await engineScreenshots(engine, finalUrl, {
+        outDir,
+        timeout,
+        httpCredentials,
+        storageState,
+        pooledBrowser: opts.enginePool?.[engine],
+      });
+      shotResult.findings.push(...extra.findings);
+      if (extra.screenshots) {
+        (shotResult.screenshots ||= []).push(...extra.screenshots);
+      }
+      if (extra.status === 'warn' && shotResult.status === 'pass') {
+        shotResult.status = 'warn';
+      }
+    }
+    results.push(shotResult);
 
     return {
       url,
@@ -96,6 +128,56 @@ export async function auditPage(url, opts = {}) {
   } finally {
     // Close the browser we own, or just our context on a shared (crawl)
     // browser — even when a check or navigation throws.
+    if (ownsBrowser) await browser.close().catch(() => {});
+    else await context?.close().catch(() => {});
+  }
+}
+
+// Navigate a non-chromium engine to the final URL and capture the viewport
+// matrix. Failures (engine not installed, nav timeout) become warnings —
+// they never sink the audit.
+async function engineScreenshots(engine, finalUrl, opts) {
+  const { outDir, timeout, httpCredentials, storageState, pooledBrowser } = opts;
+  const ownsBrowser = !pooledBrowser;
+
+  let browser;
+  try {
+    browser = pooledBrowser || (await ENGINES[engine].launch());
+  } catch (err) {
+    const hint = /executable doesn't exist/i.test(err.message)
+      ? ` — run: npx playwright install ${engine}`
+      : '';
+    return {
+      status: 'warn',
+      findings: [
+        { severity: 'warn', message: `${engine}: could not launch${hint}`, detail: err.message.split('\n')[0] },
+      ],
+    };
+  }
+
+  let context;
+  try {
+    context = await browser.newContext({
+      viewport: DEFAULT_VIEWPORT,
+      userAgent: USER_AGENT,
+      ignoreHTTPSErrors: true,
+      ...(httpCredentials ? { httpCredentials } : {}),
+      ...(storageState ? { storageState } : {}),
+    });
+    const page = await context.newPage();
+    // domcontentloaded is enough here — the chromium pass already validated
+    // full load; this pass only needs pixels.
+    await page.goto(finalUrl, { waitUntil: 'domcontentloaded', timeout });
+    await page.waitForTimeout(600);
+    return await screenshots.run({ page, outDir, engine });
+  } catch (err) {
+    return {
+      status: 'warn',
+      findings: [
+        { severity: 'warn', message: `${engine}: screenshots failed — ${err.message.split('\n')[0]}` },
+      ],
+    };
+  } finally {
     if (ownsBrowser) await browser.close().catch(() => {});
     else await context?.close().catch(() => {});
   }
