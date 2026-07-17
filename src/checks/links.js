@@ -56,8 +56,16 @@ async function checkLink(url) {
   }
 }
 
-export async function run({ page, url }) {
+export async function run({ page, url, linkCache }) {
   const pageOrigin = new URL(url).origin;
+
+  // During a crawl the same header/footer links appear on every page.
+  // linkCache (Map<url, Promise<result>>) memoizes probes across pages.
+  const cachedCheck = (target) => {
+    if (!linkCache) return checkLink(target);
+    if (!linkCache.has(target)) linkCache.set(target, checkLink(target));
+    return linkCache.get(target);
+  };
 
   // Pull every anchor href from the rendered DOM.
   const rawHrefs = await page.$$eval('a[href]', (as) => as.map((a) => a.getAttribute('href')));
@@ -91,13 +99,14 @@ export async function run({ page, url }) {
       title: 'Links',
       status: 'pass',
       findings: [{ severity: 'info', message: 'No links found on the page.' }],
+      internal: [],
     };
   }
 
   const queue = new PQueue({ concurrency: CONCURRENCY });
   const results = await Promise.all(
     links.map((link) =>
-      queue.add(async () => ({ ...link, ...(await checkLink(link.url)) }))
+      queue.add(async () => ({ ...link, ...(await cachedCheck(link.url)) }))
     )
   );
 
@@ -107,9 +116,14 @@ export async function run({ page, url }) {
   const okCount = results.filter((r) => r.status && r.status < 400).length;
 
   for (const r of broken) {
+    // LinkedIn (999) and some CDNs (403/429) block automated checkers while
+    // serving real browsers fine — report those as warnings, not failures.
+    const botBlocked = !r.internal && [999, 403, 429].includes(r.status);
     findings.push({
-      severity: r.status >= 500 || r.internal ? 'fail' : 'warn',
-      message: `${r.status} ${r.internal ? 'internal' : 'external'} — ${r.url}`,
+      severity: botBlocked ? 'warn' : r.status >= 500 || r.internal ? 'fail' : 'warn',
+      message: botBlocked
+        ? `${r.status} external — ${r.url} (likely bot protection; verify manually in a browser)`
+        : `${r.status} ${r.internal ? 'internal' : 'external'} — ${r.url}`,
     });
   }
   for (const r of errored) {
@@ -144,5 +158,9 @@ export async function run({ page, url }) {
     title: 'Links',
     status: statusFromFindings(findings),
     findings,
+    // Extra payload the crawler uses for same-origin page discovery.
+    internal: results
+      .filter((r) => r.internal)
+      .map((r) => ({ url: r.url, status: r.status ?? null })),
   };
 }

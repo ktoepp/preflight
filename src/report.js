@@ -76,10 +76,13 @@ function checkSection(result) {
     </section>`;
 }
 
-export async function writeReport(audit, outDir) {
+export async function writeReport(audit, outDir, { backHref } = {}) {
   const s = summarize(audit.results);
   const generated = new Date().toLocaleString();
   const sections = audit.results.map(checkSection).join('');
+  const backLink = backHref
+    ? `<a class="back" href="${esc(backHref)}">← All pages</a>`
+    : '';
 
   const html = `<!doctype html>
 <html lang="en">
@@ -170,11 +173,14 @@ export async function writeReport(audit, outDir) {
   @media (max-width: 640px) { .shots { grid-template-columns: 1fr; } .shot img { height: auto; } }
 
   footer { margin-top: 40px; color: var(--muted); font-size: 12px; text-align: center; }
+  a.back { display: inline-block; font-size: 13px; color: var(--muted); text-decoration: none; margin-bottom: 10px; }
+  a.back:hover { color: var(--ink); }
 </style>
 </head>
 <body>
   <div class="wrap">
     <header class="top">
+      ${backLink}
       <div class="eyebrow">Preflight QA report</div>
       <h1>${esc(audit.finalUrl)}</h1>
       <div class="meta">

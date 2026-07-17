@@ -26,15 +26,18 @@ const USER_AGENT = 'Preflight/0.1 (+https://github.com/preflight)';
  * @param {number} [opts.timeout]  navigation timeout in ms
  * @param {{username:string,password:string}} [opts.httpCredentials]
  * @param {string} [opts.storageState] path to a Playwright storage-state file
+ * @param {import('playwright').Browser} [opts.browser] shared browser (crawl); caller closes it
+ * @param {Map} [opts.linkCache] shared link-probe cache (crawl)
  * @returns {Promise<{url,finalUrl,statusCode,results,startedAt,durationMs,navError}>}
  */
 export async function auditPage(url, opts = {}) {
-  const { outDir, timeout = 30000, httpCredentials, storageState } = opts;
+  const { outDir, timeout = 30000, httpCredentials, storageState, linkCache } = opts;
   const startedAt = new Date();
 
   await fs.mkdir(path.join(outDir, 'screenshots'), { recursive: true });
 
-  const browser = await chromium.launch();
+  const ownsBrowser = !opts.browser;
+  const browser = opts.browser || (await chromium.launch());
   const context = await browser.newContext({
     viewport: DEFAULT_VIEWPORT,
     userAgent: USER_AGENT,
@@ -70,7 +73,7 @@ export async function auditPage(url, opts = {}) {
   }
 
   const finalUrl = page.url();
-  const ctx = { page, url: finalUrl, response, outDir, consoleErrors, requests };
+  const ctx = { page, url: finalUrl, response, outDir, consoleErrors, requests, linkCache };
 
   const results = [];
   for (const check of DOM_CHECKS) {
@@ -79,7 +82,8 @@ export async function auditPage(url, opts = {}) {
   // Screenshots last — it resizes the viewport.
   results.push(await safeRun(screenshots, ctx));
 
-  await browser.close();
+  if (ownsBrowser) await browser.close();
+  else await context.close();
 
   return {
     url,

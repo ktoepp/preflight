@@ -5,16 +5,29 @@ import path from 'node:path';
 import { Command } from 'commander';
 
 import { auditPage } from '../src/audit.js';
+import { crawlSite } from '../src/crawl.js';
 import { writeReport } from '../src/report.js';
-import { printSummary } from '../src/terminal.js';
+import { writeSiteReport } from '../src/report-site.js';
+import { printSummary, printCrawlProgress, printSiteSummary, summarize } from '../src/terminal.js';
 import { normalizeUrl, safeHost, timestamp, c } from '../src/util.js';
 
 const program = new Command();
 
+// Shared --basic-auth parsing.
+function parseBasicAuth(value) {
+  if (!value) return undefined;
+  const idx = value.indexOf(':');
+  if (idx === -1) {
+    console.error(c.red('Error: --basic-auth must be in the form user:pass'));
+    process.exit(2);
+  }
+  return { username: value.slice(0, idx), password: value.slice(idx + 1) };
+}
+
 program
   .name('preflight')
   .description('Local website QA — accessibility, links, SEO, favicon, flags, screenshots.')
-  .version('0.1.0');
+  .version('0.2.0');
 
 program
   .command('check')
@@ -27,20 +40,7 @@ program
   .action(async (rawUrl, opts) => {
     const url = normalizeUrl(rawUrl);
 
-    // Parse --basic-auth user:pass into Playwright httpCredentials.
-    let httpCredentials;
-    if (opts.basicAuth) {
-      const idx = opts.basicAuth.indexOf(':');
-      if (idx === -1) {
-        console.error(c.red('Error: --basic-auth must be in the form user:pass'));
-        process.exit(2);
-      }
-      httpCredentials = {
-        username: opts.basicAuth.slice(0, idx),
-        password: opts.basicAuth.slice(idx + 1),
-      };
-    }
-
+    const httpCredentials = parseBasicAuth(opts.basicAuth);
     const outDir = path.resolve(opts.out, `${safeHost(url)}-${timestamp()}`);
 
     console.log(c.dim(`Auditing ${url} …`));
@@ -62,6 +62,47 @@ program
 
     // Exit non-zero when any check failed — handy in CI / pre-release hooks.
     const anyFail = audit.results.some((r) => r.status === 'fail');
+    process.exit(anyFail ? 1 : 0);
+  });
+
+program
+  .command('crawl')
+  .description('Crawl a whole site (sitemap + rendered-DOM links) and audit every page.')
+  .argument('<url>', 'the site URL to start from')
+  .option('--out <dir>', 'output directory for reports', 'reports')
+  .option('--max-pages <n>', 'audit at most this many pages', (v) => parseInt(v, 10), 25)
+  .option('--timeout <ms>', 'per-page navigation timeout in milliseconds', (v) => parseInt(v, 10), 30000)
+  .option('--basic-auth <user:pass>', 'HTTP basic auth credentials')
+  .option('--storage-state <path>', 'Playwright storage-state JSON (saved login)')
+  .action(async (rawUrl, opts) => {
+    const url = normalizeUrl(rawUrl);
+    const httpCredentials = parseBasicAuth(opts.basicAuth);
+    const outDir = path.resolve(opts.out, `${safeHost(url)}-${timestamp()}`);
+
+    console.log(c.dim(`Crawling ${url} (up to ${opts.maxPages} pages) …`));
+    let crawl;
+    try {
+      crawl = await crawlSite(url, {
+        outDir,
+        maxPages: opts.maxPages,
+        timeout: opts.timeout,
+        httpCredentials,
+        storageState: opts.storageState,
+        onEvent: printCrawlProgress,
+      });
+    } catch (err) {
+      console.error(c.red(`\nCrawl failed: ${err.message}`));
+      process.exit(1);
+    }
+
+    // Per-page drill-down reports, then the site index.
+    for (const page of crawl.pages) {
+      await writeReport(page, page.dir, { backHref: '../../index.html' });
+    }
+    const reportPath = await writeSiteReport(crawl, outDir);
+    printSiteSummary(crawl, reportPath);
+
+    const anyFail = crawl.pages.some((p) => summarize(p.results).fail > 0);
     process.exit(anyFail ? 1 : 0);
   });
 

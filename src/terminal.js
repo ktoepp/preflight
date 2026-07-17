@@ -16,6 +16,54 @@ export function summarize(results) {
   return { pass, warn, fail, total: results.length };
 }
 
+// One line per page during a crawl: "  [3/25] ✓ /about — clean (4.1s)"
+export function printCrawlProgress(ev) {
+  if (ev.type === 'sitemap') {
+    process.stdout.write(c.dim('Fetching sitemap.xml … '));
+  } else if (ev.type === 'sitemap-done') {
+    console.log(
+      ev.found ? c.dim(`found, ${ev.count} URLs`) : c.dim('not found (link discovery only)')
+    );
+  } else if (ev.type === 'page-start') {
+    const label = new URL(ev.url).pathname || '/';
+    process.stdout.write(c.gray(`  [${ev.index}/${ev.max}] `) + label + c.dim(' … '));
+  } else if (ev.type === 'page-done') {
+    const s = summarize(ev.audit.results);
+    const color = s.fail ? c.red : s.warn ? c.yellow : c.green;
+    const icon = color(ICON[s.fail ? 'fail' : s.warn ? 'warn' : 'pass']);
+    const detail = s.fail || s.warn
+      ? [s.fail && `${s.fail} fail`, s.warn && `${s.warn} warn`].filter(Boolean).join(', ')
+      : 'clean';
+    console.log(`${icon} ${color(detail)} ${c.gray(`(${(ev.audit.durationMs / 1000).toFixed(1)}s)`)}`);
+  }
+}
+
+export function printSiteSummary(crawl, reportPath) {
+  let pass = 0;
+  let warn = 0;
+  let fail = 0;
+  for (const p of crawl.pages) {
+    const s = summarize(p.results);
+    if (s.fail) fail++;
+    else if (s.warn) warn++;
+    else pass++;
+  }
+
+  console.log('');
+  console.log(c.bold(`Preflight — ${crawl.origin} (${crawl.pages.length} pages)`));
+  if (crawl.skipped) {
+    console.log(c.gray(`  ${crawl.skipped} more page(s) discovered beyond the limit — raise --max-pages to include them.`));
+  }
+  const banner = [
+    c.green(`${pass} pages pass`),
+    c.yellow(`${warn} with warnings`),
+    c.red(`${fail} failing`),
+  ].join(c.gray(' · '));
+  console.log(`  ${c.bold('Summary:')} ${banner} ${c.gray(`(${(crawl.durationMs / 1000).toFixed(0)}s)`)}`);
+  console.log(`  ${c.bold('Report:')}  ${c.cyan(reportPath)}`);
+  console.log('');
+}
+
 export function printSummary(audit, reportPath) {
   const { results, finalUrl, statusCode, durationMs, navError } = audit;
   const s = summarize(results);
