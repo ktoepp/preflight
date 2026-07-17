@@ -30,17 +30,42 @@ const bucket = (sev) => {
   return 'info';
 };
 
+// Expandable "here's the exact element" section under a finding.
+function evidenceBlock(f) {
+  if (!f.evidence?.length) return '';
+  const items = f.evidence
+    .map(
+      (e) => `
+      <li class="ev">
+        ${e.selector ? `<code class="ev-sel">${esc(e.selector)}</code>` : ''}
+        ${e.snippet ? `<pre class="ev-snippet">${esc(e.snippet)}</pre>` : ''}
+        ${e.note ? `<div class="ev-note">${nl2br(e.note)}</div>` : ''}
+      </li>`
+    )
+    .join('');
+  const n = f.evidence.length;
+  return `
+    <details class="evidence">
+      <summary>Show source (${n} item${n === 1 ? '' : 's'})</summary>
+      <ul class="ev-list">${items}</ul>
+    </details>`;
+}
+
 function findingRow(f) {
   const b = bucket(f.severity);
   const detail = f.detail
     ? `<pre class="detail">${nl2br(f.detail)}</pre>`
     : '';
+  const fixLink = f.helpUrl
+    ? ` <a class="fix-link" href="${esc(f.helpUrl)}" target="_blank" rel="noopener">How to fix ↗</a>`
+    : '';
   return `
     <li class="finding finding--${b}">
       <span class="chip chip--${b}">${SEVERITY_LABEL[f.severity] || f.severity}</span>
       <div class="finding-body">
-        <p class="finding-msg">${esc(f.message)}</p>
+        <p class="finding-msg">${esc(f.message)}${fixLink}</p>
         ${detail}
+        ${evidenceBlock(f)}
       </div>
     </li>`;
 }
@@ -67,7 +92,7 @@ function checkSection(result) {
   const shots = screenshotSection(result);
   const findings = result.findings.map(findingRow).join('');
   return `
-    <section class="card">
+    <section class="card" id="check-${esc(result.id || '')}">
       <header class="card-head status--${cls}">
         <h2>${esc(result.title)}</h2>
         <span class="status-pill status--${cls}">${cls}</span>
@@ -126,7 +151,9 @@ export async function writeReport(audit, outDir, { backHref } = {}) {
   .card {
     background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
     box-shadow: var(--shadow); margin-top: 20px; overflow: hidden;
+    scroll-margin-top: 20px;
   }
+  .card:target { outline: 2px solid #2563eb; outline-offset: 2px; }
   .card-head {
     display: flex; align-items: center; justify-content: space-between;
     padding: 16px 20px; border-bottom: 1px solid var(--line);
@@ -163,6 +190,32 @@ export async function writeReport(audit, outDir, { backHref } = {}) {
     white-space: pre-wrap; word-break: break-word; overflow-x: auto;
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
+
+  .fix-link { font-size: 12px; color: #2563eb; text-decoration: none; white-space: nowrap; }
+  .fix-link:hover { text-decoration: underline; }
+  details.evidence { margin-top: 8px; }
+  details.evidence summary {
+    cursor: pointer; font-size: 12px; font-weight: 600; color: #2563eb;
+    user-select: none; list-style-position: inside;
+  }
+  details.evidence summary:hover { text-decoration: underline; }
+  ul.ev-list { list-style: none; margin: 8px 0 0; padding: 0; }
+  li.ev {
+    padding: 10px 12px; margin-top: 6px; background: #f8fafc;
+    border: 1px solid var(--line); border-radius: 8px;
+  }
+  code.ev-sel {
+    display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 6px;
+    background: #eef2ff; color: #4338ca; margin-bottom: 6px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    word-break: break-all;
+  }
+  pre.ev-snippet {
+    margin: 0; font-size: 12px; line-height: 1.5; color: #334155;
+    white-space: pre-wrap; word-break: break-word;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .ev-note { font-size: 12px; color: var(--muted); margin-top: 6px; }
 
   .shots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; padding: 18px 20px 22px; }
   .shot { margin: 0; }

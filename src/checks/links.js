@@ -66,13 +66,23 @@ export async function run({ page, url, linkCache }) {
     return linkCache.get(target);
   };
 
-  // Pull every anchor href from the rendered DOM.
-  const rawHrefs = await page.$$eval('a[href]', (as) => as.map((a) => a.getAttribute('href')));
+  // Pull every anchor from the rendered DOM, keeping its visible text so a
+  // broken URL can be traced back to the link the visitor actually sees.
+  const rawAnchors = await page.$$eval('a[href]', (as) =>
+    as.map((a) => ({
+      href: a.getAttribute('href'),
+      text:
+        (a.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 60) ||
+        a.getAttribute('aria-label') ||
+        (a.querySelector('img') ? `[image: ${a.querySelector('img').alt || 'no alt'}]` : ''),
+    }))
+  );
 
   // Resolve to absolute http(s) URLs, dropping fragments / mailto / tel / js.
   const seen = new Set();
   const links = [];
-  for (const href of rawHrefs) {
+  const anchorTexts = new Map(); // url -> Set of anchor labels
+  for (const { href, text } of rawAnchors) {
     if (!href) continue;
     const trimmed = href.trim();
     if (!trimmed || trimmed.startsWith('#')) continue;
@@ -86,10 +96,21 @@ export async function run({ page, url, linkCache }) {
     if (abs.protocol !== 'http:' && abs.protocol !== 'https:') continue;
     abs.hash = '';
     const key = abs.href;
+    if (text) {
+      if (!anchorTexts.has(key)) anchorTexts.set(key, new Set());
+      anchorTexts.get(key).add(text);
+    }
     if (seen.has(key)) continue;
     seen.add(key);
     links.push({ url: key, internal: abs.origin === pageOrigin });
   }
+
+  // Evidence pointing back at the visible anchor(s) for a URL.
+  const anchorEvidence = (url) => {
+    const texts = [...(anchorTexts.get(url) || [])].slice(0, 5);
+    if (!texts.length) return undefined;
+    return texts.map((t) => ({ note: `found in link: “${t}”` }));
+  };
 
   const findings = [];
   if (links.length === 0) {
@@ -121,6 +142,7 @@ export async function run({ page, url, linkCache }) {
     findings.push({
       severity: r.status >= 500 || r.internal ? 'fail' : 'warn',
       message: `${r.status} ${r.internal ? 'internal' : 'external'} — ${r.url}`,
+      evidence: anchorEvidence(r.url),
     });
   }
   // LinkedIn (999) and some CDNs (403/429) block automated checkers while
@@ -129,6 +151,7 @@ export async function run({ page, url, linkCache }) {
     findings.push({
       severity: 'warn',
       message: `${r.status} external — ${r.url} (likely bot protection; verify manually in a browser)`,
+      evidence: anchorEvidence(r.url),
     });
   }
   for (const r of errored) {
@@ -136,6 +159,7 @@ export async function run({ page, url, linkCache }) {
       severity: r.internal ? 'fail' : 'warn',
       message: `${r.tooManyRedirects ? 'redirect loop' : 'unreachable'} — ${r.url}`,
       detail: r.error || undefined,
+      evidence: anchorEvidence(r.url),
     });
   }
   for (const r of longChains) {

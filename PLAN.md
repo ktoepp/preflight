@@ -49,6 +49,7 @@ Per page, in one Playwright pass:
 - ✅ **v0.2** *(shipped 2026-07-17)* — site crawl: sitemap + link discovery, page limit flag, whole-site report with per-page drill-down
 - ✅ **v0.3** *(shipped 2026-07-17)* — multi-browser screenshot matrix (`--browsers firefox,webkit`; audit checks stay Chromium-only — see decisions.md), missing-engine handling
 - ✅ **v0.4** *(shipped 2026-07-17)* — scoped site coverage: `preflight map` (fast discovery-only enumeration → reviewable urls.txt, orphan/unlisted-page insights), `--include`/`--exclude` path patterns on map and crawl, `crawl --urls` for curated lists. Workflow: map → review/trim urls.txt → crawl the survivors. Deliberately no XML sitemap output — site builders generate those themselves; the value is the reviewable inventory.
+- ✅ **v0.5** *(shipped 2026-07-17)* — evidence drill-down: every finding carries its source (offending element's selector + HTML + axe failure summary, anchor text for broken links, placeholder-text location) as expandable blocks in the page report; axe findings are per-rule with "How to fix" links; site-report status dots deep-link to the specific check card
 - **Next candidates**
   - populate `KNOWN_DEFAULT_HASHES` in the favicon check (the headline differentiator — currently an empty map)
   - report polish: client-ready branding/logo option, print/PDF-friendly styles

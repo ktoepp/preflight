@@ -7,6 +7,8 @@ const IMPACT_ORDER = ['critical', 'serious', 'moderate', 'minor'];
 const impactSeverity = (impact) =>
   impact === 'critical' || impact === 'serious' ? 'fail' : 'warn';
 
+const MAX_EVIDENCE = 10;
+
 export async function run({ page }) {
   const findings = [];
 
@@ -24,42 +26,27 @@ export async function run({ page }) {
     };
   }
 
-  const violations = results.violations || [];
+  const violations = (results.violations || []).slice().sort(
+    (a, b) => IMPACT_ORDER.indexOf(a.impact || 'minor') - IMPACT_ORDER.indexOf(b.impact || 'minor')
+  );
 
-  // Explicitly call out missing alt text — a designer's most common miss.
-  const altRules = ['image-alt', 'input-image-alt', 'area-alt', 'role-img-alt'];
-  const altViolations = violations.filter((v) => altRules.includes(v.id));
-  const altNodeCount = altViolations.reduce((n, v) => n + v.nodes.length, 0);
-  if (altNodeCount > 0) {
-    findings.push({
-      severity: 'fail',
-      message: `Missing alt text on ${altNodeCount} element${altNodeCount === 1 ? '' : 's'}`,
-      detail: altViolations
-        .flatMap((v) => v.nodes.map((n) => n.target.join(' ')))
-        .slice(0, 20)
-        .join('\n'),
-    });
-  }
-
-  // Group the remaining violations by impact (alt-text rules already
-  // reported above — don't count them twice).
-  const byImpact = {};
+  // One finding per violated rule, carrying the offending elements as
+  // evidence so the report can show exactly what to fix.
   for (const v of violations) {
-    if (altRules.includes(v.id)) continue;
     const impact = v.impact || 'minor';
-    (byImpact[impact] ||= []).push(v);
-  }
-
-  for (const impact of IMPACT_ORDER) {
-    const group = byImpact[impact];
-    if (!group || !group.length) continue;
-    const nodeCount = group.reduce((n, v) => n + v.nodes.length, 0);
+    const evidence = v.nodes.slice(0, MAX_EVIDENCE).map((n) => ({
+      selector: n.target.join(' '),
+      snippet: n.html,
+      note: n.failureSummary,
+    }));
+    if (v.nodes.length > MAX_EVIDENCE) {
+      evidence.push({ note: `…and ${v.nodes.length - MAX_EVIDENCE} more element(s) with the same issue.` });
+    }
     findings.push({
       severity: impactSeverity(impact),
-      message: `${impact}: ${group.length} rule${group.length === 1 ? '' : 's'} violated across ${nodeCount} element${nodeCount === 1 ? '' : 's'}`,
-      detail: group
-        .map((v) => `• [${v.id}] ${v.help} (${v.nodes.length}) — ${v.helpUrl}`)
-        .join('\n'),
+      message: `[${impact}] ${v.help} — ${v.nodes.length} element${v.nodes.length === 1 ? '' : 's'}`,
+      helpUrl: v.helpUrl,
+      evidence,
     });
   }
 

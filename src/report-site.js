@@ -55,10 +55,11 @@ function pageRow(page) {
   const { fail, warn } = issueCount(page);
   const href = `pages/${page.slug}/report.html`;
 
+  // Each dot deep-links to that check's card on the page report.
   const cells = CHECK_COLUMNS.map((col) => {
     const r = page.results.find((x) => x.id === col.id);
     if (!r) return '<td class="cell">–</td>';
-    return `<td class="cell"><span class="dot dot--${r.status}" title="${esc(col.label)}: ${r.status}">${ICON[r.status] || '?'}</span></td>`;
+    return `<td class="cell"><a class="dot dot--${r.status}" href="${esc(href)}#check-${col.id}" title="${esc(col.label)}: ${r.status} — click for details">${ICON[r.status] || '?'}</a></td>`;
   }).join('');
 
   const issues =
@@ -160,7 +161,9 @@ export async function writeSiteReport(crawl, outDir) {
   .dot {
     display: inline-flex; align-items: center; justify-content: center;
     width: 22px; height: 22px; border-radius: 999px; font-size: 12px; font-weight: 700;
+    text-decoration: none;
   }
+  a.dot:hover { outline: 2px solid currentColor; outline-offset: 1px; }
   .dot--pass { background: var(--pass-bg); color: var(--pass); }
   .dot--warn { background: var(--warn-bg); color: var(--warn); }
   .dot--fail { background: var(--fail-bg); color: var(--fail); }
