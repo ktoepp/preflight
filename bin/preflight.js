@@ -9,6 +9,7 @@ import fs from 'node:fs/promises';
 import { auditPage } from '../src/audit.js';
 import { crawlSite } from '../src/crawl.js';
 import { mapSite, writeUrlList } from '../src/map.js';
+import { writeCheckPdf, writeCrawlPdf } from '../src/pdf.js';
 import { writeReport } from '../src/report.js';
 import { writeSiteReport } from '../src/report-site.js';
 import {
@@ -90,6 +91,7 @@ program
   .option('--out <dir>', 'output directory for reports', 'reports')
   .option('--timeout <ms>', 'navigation timeout in milliseconds', (v) => parseInt(v, 10), 30000)
   .option('--browsers <list>', 'extra screenshot engines, comma-separated: firefox,webkit')
+  .option('--pdf', 'also export the report as report.pdf')
   .option('--basic-auth <user:pass>', 'HTTP basic auth credentials')
   .option('--storage-state <path>', 'Playwright storage-state JSON (saved login)')
   .action(async (rawUrl, opts) => {
@@ -115,6 +117,11 @@ program
 
     const reportPath = await writeReport(audit, outDir);
     printSummary(audit, reportPath);
+    if (opts.pdf) {
+      console.log(c.dim('  Exporting PDF …'));
+      const pdfPath = await writeCheckPdf(reportPath, outDir);
+      console.log(`  ${c.bold('PDF:')}     ${c.cyan(pdfPath)}\n`);
+    }
 
     // Exit non-zero when any check failed — handy in CI / pre-release hooks.
     const anyFail = audit.results.some((r) => r.status === 'fail');
@@ -170,6 +177,7 @@ program
   .option('--include <patterns>', 'only audit paths matching (repeatable, comma-separable, globs ok)', collectList)
   .option('--exclude <patterns>', 'skip paths matching (repeatable, comma-separable, globs ok)', collectList)
   .option('--urls <file>', 'audit exactly the URLs in this file (from `preflight map`); skips discovery')
+  .option('--pdf', 'also export a single combined report.pdf for the whole crawl')
   .option('--ignore-robots', 'audit pages even if robots.txt disallows crawling (only on sites you own)')
   .option('--basic-auth <user:pass>', 'HTTP basic auth credentials')
   .option('--storage-state <path>', 'Playwright storage-state JSON (saved login)')
@@ -216,6 +224,11 @@ program
     }
     const reportPath = await writeSiteReport(crawl, outDir);
     printSiteSummary(crawl, reportPath);
+    if (opts.pdf) {
+      console.log(c.dim('  Exporting combined PDF …'));
+      const pdfPath = await writeCrawlPdf(crawl, outDir);
+      console.log(`  ${c.bold('PDF:')}     ${c.cyan(pdfPath)}\n`);
+    }
 
     const anyFail = crawl.pages.some((p) => summarize(p.results).fail > 0);
     process.exit(anyFail ? 1 : 0);

@@ -4,7 +4,7 @@ import path from 'node:path';
 import { summarize } from './terminal.js';
 import { VERSION } from './util.js';
 
-const esc = (s) =>
+export const esc = (s) =>
   String(s ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -70,7 +70,7 @@ function findingRow(f) {
     </li>`;
 }
 
-function screenshotSection(result) {
+function screenshotSection(result, shotBase = '') {
   const shots = result.screenshots || [];
   if (!shots.length) return '';
   const cards = shots
@@ -78,8 +78,8 @@ function screenshotSection(result) {
       (s) => `
       <figure class="shot">
         <figcaption>${esc(s.label)} · ${s.width}×${s.height}</figcaption>
-        <a href="${esc(s.path)}" target="_blank" rel="noopener">
-          <img src="${esc(s.path)}" alt="${esc(s.label)} screenshot" loading="lazy">
+        <a href="${esc(shotBase + s.path)}" target="_blank" rel="noopener">
+          <img src="${esc(shotBase + s.path)}" alt="${esc(s.label)} screenshot" loading="lazy">
         </a>
       </figure>`
     )
@@ -87,9 +87,9 @@ function screenshotSection(result) {
   return `<div class="shots">${cards}</div>`;
 }
 
-function checkSection(result) {
+export function checkSection(result, { shotBase = '' } = {}) {
   const cls = result.status;
-  const shots = screenshotSection(result);
+  const shots = screenshotSection(result, shotBase);
   const findings = result.findings.map(findingRow).join('');
   return `
     <section class="card" id="check-${esc(result.id || '')}">
@@ -102,21 +102,7 @@ function checkSection(result) {
     </section>`;
 }
 
-export async function writeReport(audit, outDir, { backHref } = {}) {
-  const s = summarize(audit.results);
-  const generated = new Date().toLocaleString();
-  const sections = audit.results.map(checkSection).join('');
-  const backLink = backHref
-    ? `<a class="back" href="${esc(backHref)}">← All pages</a>`
-    : '';
-
-  const html = `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Preflight report — ${esc(audit.finalUrl)}</title>
-<style>
+export const REPORT_CSS = `
   :root {
     --bg: #f5f6f8; --surface: #ffffff; --ink: #1a1d21; --muted: #6b7280;
     --line: #e6e8ec; --pass: #16a34a; --warn: #d97706; --fail: #dc2626;
@@ -229,7 +215,35 @@ export async function writeReport(audit, outDir, { backHref } = {}) {
   footer { margin-top: 40px; color: var(--muted); font-size: 12px; text-align: center; }
   a.back { display: inline-block; font-size: 13px; color: var(--muted); text-decoration: none; margin-bottom: 10px; }
   a.back:hover { color: var(--ink); }
-</style>
+
+  /* --- print / PDF --- */
+  @media print {
+    body { background: #fff; }
+    .wrap { max-width: none; padding: 0; }
+    .card { box-shadow: none; break-inside: avoid; }
+    a.back { display: none; }
+    details.evidence summary { display: none; }
+    .shot img { height: auto; max-height: 240px; }
+    .page-section { break-before: page; }
+    .page-section:first-of-type { break-before: auto; }
+  }
+`;
+
+export async function writeReport(audit, outDir, { backHref } = {}) {
+  const s = summarize(audit.results);
+  const generated = new Date().toLocaleString();
+  const sections = audit.results.map(checkSection).join('');
+  const backLink = backHref
+    ? `<a class="back" href="${esc(backHref)}">← All pages</a>`
+    : '';
+
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Preflight report — ${esc(audit.finalUrl)}</title>
+<style>${REPORT_CSS}</style>
 </head>
 <body>
   <div class="wrap">

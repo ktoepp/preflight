@@ -27,6 +27,9 @@ Runs all six checks (accessibility, links, SEO, favicon, release flags, screensh
 ```sh
 node bin/preflight.js crawl example.com
 node bin/preflight.js crawl example.com --max-pages 50
+
+# Client deliverable: one combined PDF (summary + every page's findings + screenshots)
+node bin/preflight.js crawl example.com --pdf
 ```
 
 Discovers pages from `sitemap.xml` plus links on each rendered page, audits up to `--max-pages` (default 25), and writes `index.html` — a per-page status matrix that drills down into full per-page reports.
@@ -97,6 +100,7 @@ node bin/preflight.js crawl staging.example.com --storage-state state.json
 | `--include` / `--exclude` | map, crawl | — | path-pattern scoping |
 | `--urls <file>` | crawl | — | audit exactly this list; skips discovery |
 | `--ignore-robots` | map, crawl | — | override robots.txt on sites you own |
+| `--pdf` | check, crawl | — | also export report.pdf (crawl: one combined document) |
 
 Exit code is non-zero when any check fails, so `check`/`crawl` slot straight into CI or a pre-release script.
 

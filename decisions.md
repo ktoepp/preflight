@@ -47,5 +47,8 @@ Every finding may include `evidence: [{selector, snippet, note}]` and `helpUrl`.
 ## 2026-07-17 — Sitemap discovery: robots.txt directives beat conventional paths; absence is a finding (v0.7)
 Discovery order: `Sitemap:` lines in robots.txt (how real crawlers discover sitemaps; catches nonstandard locations), then /sitemap.xml, /sitemap_index.xml (Yoast), /wp-sitemap.xml (WP core), /sitemap-index.xml — first hit wins, memoized per origin so crawl/map/SEO-check share one pass. No sitemap → warn-level SEO finding, because it degrades both search-engine coverage and our own crawl (orphan pages become undiscoverable — only `crawl --urls` can reach them). Deliberately no search-engine or Wayback scraping to find orphans.
 
+## 2026-07-17 — PDF export prints the HTML report through Chromium; crawls get one combined document (v0.8)
+Playwright's page.pdf() means zero new dependencies and the PDF always matches the HTML report (same markup, same CSS + @media print rules). A crawl exports a single report.pdf (cover summary → page matrix → per-page sections) rather than a folder of per-page PDFs — clients get one attachment. Evidence <details> are forced open before printing since a PDF can't be clicked. The combined document is composed as a temporary print.html (deleted after) because screenshots must resolve relative to the run root.
+
 ## 2026-07-17 — Scope patterns match pathnames; bare paths are prefixes; start URL always in scope
 `/work` matches `/work` and `/work/x` (segment-boundary prefix); `*` stays within a segment, `**` crosses segments. The start URL bypasses scope so a crawl can't exclude its own entry point into nothing.

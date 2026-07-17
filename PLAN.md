@@ -52,9 +52,10 @@ Per page, in one Playwright pass:
 - ✅ **v0.5** *(shipped 2026-07-17)* — evidence drill-down: every finding carries its source (offending element's selector + HTML + axe failure summary, anchor text for broken links, placeholder-text location) as expandable blocks in the page report; axe findings are per-rule with "How to fix" links; site-report status dots deep-link to the specific check card
 - ✅ **v0.6** *(shipped 2026-07-17)* — robots.txt respect: crawl/map obey Disallow/Allow (Google longest-match semantics) and Crawl-delay (capped 10s), fail fast with a clear message when the start URL is disallowed; `--ignore-robots` owner override; `check` deliberately exempt (a single explicit URL is a user action, not crawling)
 - ✅ **v0.7** *(shipped 2026-07-17)* — sitemap discovery chain: robots.txt `Sitemap:` directives first (the authoritative route), then /sitemap.xml and common alternates (/sitemap_index.xml, /wp-sitemap.xml, /sitemap-index.xml); missing sitemap is now a warn-level SEO finding (link-discovery-only crawls can't find orphan pages — `crawl --urls` is the manual escape hatch)
+- ✅ **v0.8** *(shipped 2026-07-17)* — `--pdf` export via Chromium's print engine (no new deps): `check --pdf` prints report.html; `crawl --pdf` composes one combined client deliverable (cover summary + page matrix + every page's findings, evidence forced open, screenshots included)
 - **Next candidates**
   - populate `KNOWN_DEFAULT_HASHES` in the favicon check (the headline differentiator — currently an empty map)
-  - report polish: client-ready branding/logo option, print/PDF-friendly styles
+  - report branding: client logo/name option on reports and PDFs
   - `preflight ui` localhost dashboard (Unlighthouse's pattern — right step before any Electron/Tauri app)
   - npm publish for other creators; config file for per-client presets
 - **Skip for v1** — plugin/message-bus architecture (sitespeed.io-style): over-engineering until there's a plugin ecosystem; a simple async runner per URL is enough
