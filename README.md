@@ -44,6 +44,10 @@ Options (both commands): `--out <dir>`, `--timeout <ms>`, `--browsers firefox,we
 3. Produce a client-ready report (shareable HTML/PDF)
 4. Eventually shareable with other creators as an installable CLI/app
 
+## Contributing
+
+Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, project philosophy, and how to add a check. The short version: fork + PR, keep dependencies minimal, and every finding needs evidence.
+
 ## License
 
 MIT © Katie Toepp
