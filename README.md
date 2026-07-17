@@ -11,7 +11,7 @@ A lightweight, local-first QA tool for web designers. Point it at a staging or l
 
 Built for designers working in Figma, Framer, Wix, Squarespace, WordPress and similar — you control the published URL, not necessarily the code, so everything runs against the rendered site.
 
-**Status:** v0.3 — single-page audits, whole-site crawls, and the multi-browser screenshot matrix all work. See [PLAN.md](PLAN.md) for the roadmap and [decisions.md](decisions.md) for why things are the way they are.
+**Status:** v0.4 — single-page audits, whole-site crawls, scoped crawls (`map` → review → `crawl --urls`, or `--include`/`--exclude` patterns), and the multi-browser screenshot matrix all work. See [QUICKSTART.md](QUICKSTART.md) for CLI usage, [PLAN.md](PLAN.md) for the roadmap, and [decisions.md](decisions.md) for why things are the way they are.
 
 ## Usage
 
@@ -25,6 +25,10 @@ node bin/preflight.js check example.com
 # Crawl the whole site (sitemap.xml + rendered-DOM link discovery)
 # → reports/<host>-<timestamp>/index.html with per-page drill-down
 node bin/preflight.js crawl example.com --max-pages 25
+
+# Scope it: enumerate fast (no audits), trim urls.txt, audit the survivors
+node bin/preflight.js map example.com
+node bin/preflight.js crawl example.com --urls reports/example.com-map-<ts>/urls.txt
 
 # Add Firefox/WebKit to the screenshot matrix (audit checks still run in Chromium)
 npx playwright install firefox webkit   # one-time, ~200 MB

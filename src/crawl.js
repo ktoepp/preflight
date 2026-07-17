@@ -6,7 +6,7 @@ import path from 'node:path';
 import { chromium } from 'playwright';
 
 import { auditPage, ENGINES } from './audit.js';
-import { USER_AGENT } from './util.js';
+import { USER_AGENT, inScope } from './util.js';
 
 const SITEMAP_TIMEOUT_MS = 10000;
 const MAX_CHILD_SITEMAPS = 10;
@@ -26,7 +26,7 @@ export function normalizePageUrl(input, base) {
   return u.href;
 }
 
-function isAuditablePage(url, origin) {
+export function isAuditablePage(url, origin) {
   let u;
   try {
     u = new URL(url);
@@ -58,7 +58,7 @@ async function fetchText(url) {
 // Follow redirects on the start URL so the crawl origin matches the site's
 // canonical host. Falls back to the given URL on any error (Playwright will
 // surface the real problem during the first page audit).
-async function resolveStart(url) {
+export async function resolveStart(url) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), SITEMAP_TIMEOUT_MS);
   try {
@@ -141,6 +141,8 @@ export function pageSlug(url, taken) {
  * @param {{username,password}} [opts.httpCredentials]
  * @param {string} [opts.storageState]
  * @param {string[]} [opts.engines]  browser engines for the screenshot matrix
+ * @param {object} [opts.scope]      compiled include/exclude scope (compileScope)
+ * @param {string[]} [opts.urlList]  audit exactly these URLs (skips discovery)
  * @param {(ev: object) => void} [opts.onEvent]  progress callback
  * @returns {Promise<{startUrl, origin, sitemapFound, pages, skipped, startedAt, durationMs}>}
  */
@@ -154,6 +156,9 @@ export async function crawlSite(startUrl, opts = {}) {
     onEvent = () => {},
   } = opts;
   const engines = opts.engines?.length ? opts.engines : ['chromium'];
+  const { scope } = opts;
+  // List mode: audit exactly the given URLs — no sitemap, no discovery.
+  const listMode = Boolean(opts.urlList?.length);
 
   const startedAt = new Date();
   // Resolve redirects first (apex → www is near-universal on Wix/Squarespace/
@@ -161,12 +166,21 @@ export async function crawlSite(startUrl, opts = {}) {
   const start = normalizePageUrl(await resolveStart(normalizePageUrl(startUrl)));
   const origin = new URL(start).origin;
 
-  onEvent({ type: 'sitemap' });
-  const sitemap = await fetchSitemapUrls(origin);
-  onEvent({ type: 'sitemap-done', found: sitemap.found, count: sitemap.urls.length });
+  let sitemap = { found: false, urls: [] };
+  if (!listMode) {
+    onEvent({ type: 'sitemap' });
+    sitemap = await fetchSitemapUrls(origin);
+    onEvent({ type: 'sitemap-done', found: sitemap.found, count: sitemap.urls.length });
+  }
 
-  // BFS queue: start URL first, then sitemap pages, then discovered links.
-  const queue = [start, ...sitemap.urls.filter((u) => u !== start)];
+  // The start URL is always audited, even outside the scope patterns.
+  const admit = (url) => url === start || inScope(url, scope);
+
+  // BFS queue: start URL first, then sitemap pages, then discovered links —
+  // or, in list mode, exactly the curated list.
+  const queue = listMode
+    ? [...new Set(opts.urlList.map((u) => normalizePageUrl(u)))].filter(admit)
+    : [start, ...sitemap.urls.filter((u) => u !== start && admit(u))];
   const enqueued = new Set(queue);
   const visited = new Set();
   const slugs = new Set();
@@ -221,7 +235,9 @@ export async function crawlSite(startUrl, opts = {}) {
         // about:blank etc. on failed navigations — nothing to dedupe
       }
 
-      // Discover new same-origin pages from this page's link check.
+      // Discover new same-origin pages from this page's link check
+      // (skipped in list mode — the list is the whole job).
+      if (listMode) continue;
       const linkResult = audit.results.find((r) => r.id === 'links');
       for (const l of linkResult?.internal || []) {
         if (l.status != null && l.status >= 400) continue; // broken — already flagged
@@ -233,6 +249,7 @@ export async function crawlSite(startUrl, opts = {}) {
         }
         if (!isAuditablePage(norm, origin)) continue;
         if (visited.has(norm) || enqueued.has(norm)) continue;
+        if (!admit(norm)) continue;
         enqueued.add(norm);
         queue.push(norm);
       }
@@ -245,6 +262,7 @@ export async function crawlSite(startUrl, opts = {}) {
   return {
     startUrl: start,
     origin,
+    mode: listMode ? 'list' : 'discover',
     sitemapFound: sitemap.found,
     sitemapCount: sitemap.urls.length,
     pages,

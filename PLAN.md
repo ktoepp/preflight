@@ -1,6 +1,6 @@
 # Preflight — Plan
 
-*Drafted 2026-07-16 from a research pass over existing OSS/commercial tools.*
+*Drafted 2026-07-16 from a research pass over existing OSS/commercial tools. Updated 2026-07-17 (v0.4). See [decisions.md](decisions.md) for the running rationale log and [QUICKSTART.md](QUICKSTART.md) for CLI usage.*
 
 ## The decision: build (thin), don't fork
 
@@ -45,12 +45,14 @@ Per page, in one Playwright pass:
 
 ## Milestones
 
-- **v0.1** — single-page audit: `preflight check <url>` runs all 6 checks on one page, prints terminal summary, writes report.html
-- **v0.2** — site crawl: sitemap + link discovery, page limit flag, whole-site report with per-page drill-down
-- **v0.3** — multi-browser/viewport matrix, auth flags, report polish (client-ready branding, pass/fail summary page)
-- **Later** — `preflight ui` localhost dashboard (Unlighthouse's pattern — right step before any Electron/Tauri app); npm publish for other creators; config file for per-client presets
+- ✅ **v0.1** *(shipped 2026-07-17)* — single-page audit: `preflight check <url>` runs all 6 checks on one page, prints terminal summary, writes report.html
+- ✅ **v0.2** *(shipped 2026-07-17)* — site crawl: sitemap + link discovery, page limit flag, whole-site report with per-page drill-down
+- ✅ **v0.3** *(shipped 2026-07-17)* — multi-browser screenshot matrix (`--browsers firefox,webkit`; audit checks stay Chromium-only — see decisions.md), missing-engine handling
+- ✅ **v0.4** *(shipped 2026-07-17)* — scoped site coverage: `preflight map` (fast discovery-only enumeration → reviewable urls.txt, orphan/unlisted-page insights), `--include`/`--exclude` path patterns on map and crawl, `crawl --urls` for curated lists. Workflow: map → review/trim urls.txt → crawl the survivors. Deliberately no XML sitemap output — site builders generate those themselves; the value is the reviewable inventory.
+- **Next candidates**
+  - populate `KNOWN_DEFAULT_HASHES` in the favicon check (the headline differentiator — currently an empty map)
+  - report polish: client-ready branding/logo option, print/PDF-friendly styles
+  - robots.txt respect + owner override (required before sharing beyond own sites)
+  - `preflight ui` localhost dashboard (Unlighthouse's pattern — right step before any Electron/Tauri app)
+  - npm publish for other creators; config file for per-client presets
 - **Skip for v1** — plugin/message-bus architecture (sitespeed.io-style): over-engineering until there's a plugin ecosystem; a simple async runner per URL is enough
-
-## Interim workflow (use today, while building)
-
-`npx unlighthouse --site <url>` for a whole-site Lighthouse sweep + `npx linkinator <url> -r` for links covers ~60% of the checklist right now with zero build effort.

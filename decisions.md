@@ -31,3 +31,12 @@ PLAN.md calls for robots.txt respect with an owner override. Deferred: current u
 
 ## 2026-07-17 — Per-page audits run only in Chromium; extra engines capture screenshots only (v0.3)
 axe-core results, SEO tags, favicon, and link statuses don't meaningfully differ per engine — re-running all checks in Firefox/WebKit would triple crawl time for near-identical findings. Cross-browser value is rendering, so extra engines only navigate and screenshot the viewport matrix.
+
+## 2026-07-17 — Scoping is map → review urls.txt → crawl --urls, not just filters (v0.4)
+`--include`/`--exclude` path patterns exist on both commands, but the primary scoping workflow is a human review step: `preflight map` enumerates fast (no audits, one reused page, ~1s/page), writes a plain-text urls.txt, and the user deletes lines before `crawl --urls` audits the survivors. Rationale: patterns can't express "skip these 4 specific pages", and multi-engine screenshots make wasted audits expensive. Map doubles as a QA artifact — it reports orphans (in sitemap.xml, linked from nowhere) and pages missing from the sitemap.
+
+## 2026-07-17 — No XML sitemap generation
+Wix/Squarespace/Framer all generate sitemap.xml themselves; emitting one would solve a non-problem. The map output is a reviewable plain-text inventory instead.
+
+## 2026-07-17 — Scope patterns match pathnames; bare paths are prefixes; start URL always in scope
+`/work` matches `/work` and `/work/x` (segment-boundary prefix); `*` stays within a segment, `**` crosses segments. The start URL bypasses scope so a crawl can't exclude its own entry point into nothing.

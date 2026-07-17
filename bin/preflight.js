@@ -4,12 +4,22 @@
 import path from 'node:path';
 import { Command } from 'commander';
 
+import fs from 'node:fs/promises';
+
 import { auditPage } from '../src/audit.js';
 import { crawlSite } from '../src/crawl.js';
+import { mapSite, writeUrlList } from '../src/map.js';
 import { writeReport } from '../src/report.js';
 import { writeSiteReport } from '../src/report-site.js';
-import { printSummary, printCrawlProgress, printSiteSummary, summarize } from '../src/terminal.js';
-import { normalizeUrl, safeHost, timestamp, c, VERSION } from '../src/util.js';
+import {
+  printSummary,
+  printCrawlProgress,
+  printSiteSummary,
+  printMapProgress,
+  printMapSummary,
+  summarize,
+} from '../src/terminal.js';
+import { normalizeUrl, safeHost, timestamp, c, VERSION, compileScope } from '../src/util.js';
 
 const program = new Command();
 
@@ -38,6 +48,34 @@ function parseBrowsers(value) {
     }
   }
   return [...new Set(['chromium', ...requested])];
+}
+
+// Repeatable, comma-separable list flags: --include /work --include /blog,/about
+const collectList = (value, previous = []) => [
+  ...previous,
+  ...value.split(',').map((s) => s.trim()).filter(Boolean),
+];
+
+// Read a urls.txt written by `preflight map` (or hand-made): one URL per
+// line, blank lines and #-comments ignored.
+async function readUrlList(file) {
+  let text;
+  try {
+    text = await fs.readFile(file, 'utf8');
+  } catch (err) {
+    console.error(c.red(`Error: could not read --urls file: ${err.message}`));
+    process.exit(2);
+  }
+  const urls = text
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l && !l.startsWith('#'))
+    .map(normalizeUrl);
+  if (urls.length === 0) {
+    console.error(c.red(`Error: --urls file has no URLs: ${file}`));
+    process.exit(2);
+  }
+  return urls;
 }
 
 program
@@ -84,6 +122,42 @@ program
   });
 
 program
+  .command('map')
+  .description('Enumerate a site\'s pages (no audits) and write a reviewable urls.txt for crawl --urls.')
+  .argument('<url>', 'the site URL to start from')
+  .option('--out <dir>', 'output directory', 'reports')
+  .option('--max-pages <n>', 'visit at most this many pages', (v) => parseInt(v, 10), 200)
+  .option('--timeout <ms>', 'per-page navigation timeout in milliseconds', (v) => parseInt(v, 10), 15000)
+  .option('--include <patterns>', 'only follow paths matching (repeatable, comma-separable, globs ok)', collectList)
+  .option('--exclude <patterns>', 'skip paths matching (repeatable, comma-separable, globs ok)', collectList)
+  .option('--basic-auth <user:pass>', 'HTTP basic auth credentials')
+  .option('--storage-state <path>', 'Playwright storage-state JSON (saved login)')
+  .action(async (rawUrl, opts) => {
+    const url = normalizeUrl(rawUrl);
+    const outDir = path.resolve(opts.out, `${safeHost(url)}-map-${timestamp()}`);
+
+    console.log(c.dim(`Mapping ${url} (up to ${opts.maxPages} pages) …`));
+    let map;
+    try {
+      map = await mapSite(url, {
+        maxPages: opts.maxPages,
+        timeout: opts.timeout,
+        scope: compileScope(opts.include, opts.exclude),
+        httpCredentials: parseBasicAuth(opts.basicAuth),
+        storageState: opts.storageState,
+        onEvent: printMapProgress,
+      });
+    } catch (err) {
+      console.error(c.red(`\nMap failed: ${err.message}`));
+      process.exit(1);
+    }
+
+    const urlsPath = await writeUrlList(map, outDir);
+    printMapSummary(map, urlsPath);
+    process.exit(0);
+  });
+
+program
   .command('crawl')
   .description('Crawl a whole site (sitemap + rendered-DOM links) and audit every page.')
   .argument('<url>', 'the site URL to start from')
@@ -91,14 +165,29 @@ program
   .option('--max-pages <n>', 'audit at most this many pages', (v) => parseInt(v, 10), 25)
   .option('--timeout <ms>', 'per-page navigation timeout in milliseconds', (v) => parseInt(v, 10), 30000)
   .option('--browsers <list>', 'extra screenshot engines, comma-separated: firefox,webkit')
+  .option('--include <patterns>', 'only audit paths matching (repeatable, comma-separable, globs ok)', collectList)
+  .option('--exclude <patterns>', 'skip paths matching (repeatable, comma-separable, globs ok)', collectList)
+  .option('--urls <file>', 'audit exactly the URLs in this file (from `preflight map`); skips discovery')
   .option('--basic-auth <user:pass>', 'HTTP basic auth credentials')
   .option('--storage-state <path>', 'Playwright storage-state JSON (saved login)')
-  .action(async (rawUrl, opts) => {
+  .action(async (rawUrl, opts, cmd) => {
     const url = normalizeUrl(rawUrl);
     const httpCredentials = parseBasicAuth(opts.basicAuth);
     const outDir = path.resolve(opts.out, `${safeHost(url)}-${timestamp()}`);
+    const urlList = opts.urls ? await readUrlList(opts.urls) : undefined;
+    // A curated list is already scoped — audit all of it unless --max-pages
+    // was given explicitly.
+    if (urlList && cmd.getOptionValueSource('maxPages') === 'default') {
+      opts.maxPages = urlList.length;
+    }
 
-    console.log(c.dim(`Crawling ${url} (up to ${opts.maxPages} pages) …`));
+    console.log(
+      c.dim(
+        urlList
+          ? `Auditing ${urlList.length} URLs from ${opts.urls} …`
+          : `Crawling ${url} (up to ${opts.maxPages} pages) …`
+      )
+    );
     let crawl;
     try {
       crawl = await crawlSite(url, {
@@ -108,6 +197,8 @@ program
         httpCredentials,
         storageState: opts.storageState,
         engines: parseBrowsers(opts.browsers),
+        scope: compileScope(opts.include, opts.exclude),
+        urlList,
         onEvent: printCrawlProgress,
       });
     } catch (err) {

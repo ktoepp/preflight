@@ -38,6 +38,58 @@ export function printCrawlProgress(ev) {
   }
 }
 
+// Map progress: one dim line per visited page.
+export function printMapProgress(ev) {
+  if (ev.type === 'sitemap') {
+    process.stdout.write(c.dim('Fetching sitemap.xml … '));
+  } else if (ev.type === 'sitemap-done') {
+    console.log(
+      ev.found ? c.dim(`found, ${ev.count} URLs`) : c.dim('not found (link discovery only)')
+    );
+  } else if (ev.type === 'page-done') {
+    const p = ev.page;
+    const label = new URL(p.url).pathname || '/';
+    const ok = !p.navError && (p.status == null || p.status < 400);
+    const mark = p.navError ? c.red('✗') : ok ? c.green('·') : c.red(String(p.status));
+    console.log(`  ${mark} ${label}${p.navError ? c.red(`  (${p.navError})`) : ''}`);
+  }
+}
+
+export function printMapSummary(map, urlsPath) {
+  console.log('');
+  console.log(c.bold(`Preflight map — ${map.origin}`));
+  const bits = [
+    `${map.pages.length} pages`,
+    map.sitemapFound ? `sitemap.xml: ${map.sitemapCount} URLs` : 'no sitemap.xml',
+    `${(map.durationMs / 1000).toFixed(0)}s`,
+  ];
+  if (map.outOfScope) bits.push(`${map.outOfScope} URLs outside scope`);
+  if (map.skipped) bits.push(`${map.skipped} beyond --max-pages`);
+  console.log(c.gray(`  ${bits.join(' · ')}`));
+
+  const bad = map.pages.filter((p) => p.navError || (p.status && p.status >= 400));
+  if (bad.length) {
+    console.log(c.yellow(`  ${bad.length} page(s) errored or 4xx/5xx:`));
+    for (const p of bad.slice(0, 10)) {
+      console.log(c.yellow(`    ${p.status ?? 'nav error'} — ${p.url}`));
+    }
+  }
+  if (map.orphans.length) {
+    console.log(c.yellow(`  ${map.orphans.length} orphan page(s) — in sitemap.xml but not linked from anywhere:`));
+    for (const u of map.orphans.slice(0, 10)) console.log(c.yellow(`    ${new URL(u).pathname}`));
+  }
+  if (map.unlisted.length) {
+    console.log(c.yellow(`  ${map.unlisted.length} page(s) linked on the site but missing from sitemap.xml:`));
+    for (const u of map.unlisted.slice(0, 10)) console.log(c.yellow(`    ${new URL(u).pathname}`));
+  }
+
+  console.log('');
+  console.log(`  ${c.bold('URL list:')} ${c.cyan(urlsPath)}`);
+  console.log(c.gray('  Review/trim the list, then audit it with:'));
+  console.log(c.cyan(`    preflight crawl ${map.origin} --urls ${urlsPath}`));
+  console.log('');
+}
+
 export function printSiteSummary(crawl, reportPath) {
   let pass = 0;
   let warn = 0;

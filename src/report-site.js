@@ -93,9 +93,12 @@ export async function writeSiteReport(crawl, outDir) {
   const rows = crawl.pages.map(pageRow).join('');
   const colHead = CHECK_COLUMNS.map((c) => `<th class="cell">${esc(c.label)}</th>`).join('');
 
-  const sitemapNote = crawl.sitemapFound
-    ? `sitemap.xml found (${crawl.sitemapCount} URLs)`
-    : 'no sitemap.xml — crawled from links only';
+  const sitemapNote =
+    crawl.mode === 'list'
+      ? 'audited from a curated URL list'
+      : crawl.sitemapFound
+        ? `sitemap.xml found (${crawl.sitemapCount} URLs)`
+        : 'no sitemap.xml — crawled from links only';
   const skippedNote = crawl.skipped
     ? ` · ${crawl.skipped} discovered page${crawl.skipped === 1 ? '' : 's'} beyond the limit not audited`
     : '';
